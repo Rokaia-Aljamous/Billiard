@@ -243,15 +243,37 @@ export const useSim = create<SimState>((set, get) => ({
   },
 
   step: (dt) => {
-    const { balls, world, time, samples, trail } = get();
+    const { balls, world, time, samples, trail, collisions } = get();
     const forces: Record<number, BallForces> = {};
     for (const b of balls) {
       forces[b.id] = stepBall(b, world, dt);
     }
-    // collisions
+    // collisions — snapshot pre-vel to derive impulse magnitude after physics resolves
+    const preVel = balls.map((b) => ({ ...b.vel }));
+    const newColl: CollisionEvent[] = [];
     for (let i = 0; i < balls.length; i++) {
       for (let j = i + 1; j < balls.length; j++) {
-        resolveCollision(balls[i], balls[j], world.restitution);
+        const a = balls[i];
+        const b = balls[j];
+        if (resolveCollision(a, b, world.restitution)) {
+          const dvx = a.vel.x - preVel[i].x;
+          const dvy = a.vel.y - preVel[i].y;
+          const dvz = a.vel.z - preVel[i].z;
+          const mag = a.mass * Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+          const cx = (a.pos.x + b.pos.x) / 2;
+          const cy = (a.pos.y + b.pos.y) / 2;
+          const cz = (a.pos.z + b.pos.z) / 2;
+          const nx = b.pos.x - a.pos.x;
+          const nz = b.pos.z - a.pos.z;
+          const nl = Math.hypot(nx, nz) || 1;
+          newColl.push({
+            id: Date.now() + Math.random(),
+            pos: { x: cx, y: cy, z: cz },
+            magnitude: mag,
+            normal: { x: nx / nl, y: 0, z: nz / nl },
+            bornAt: time + dt,
+          });
+        }
       }
     }
     const target = balls[0];
@@ -274,12 +296,58 @@ export const useSim = create<SimState>((set, get) => ({
       trail.length > 400
         ? [...trail.slice(-399), { ...target.pos }]
         : [...trail, { ...target.pos }];
+
+    // Predicted trajectory: simple forward extrapolation under rolling deceleration + cushion reflection.
+    const predicted: Vec3[] = [];
+    if (!target.airborne && speed > 0.05) {
+      const decel = world.muRolling * world.gravity + 0.001;
+      let px = target.pos.x;
+      let pz = target.pos.z;
+      let vx = target.vel.x;
+      let vz = target.vel.z;
+      const sp = Math.hypot(vx, vz);
+      const stopT = sp / Math.max(decel, 1e-4);
+      const steps = 60;
+      const stepT = Math.min(stopT, 3) / steps;
+      for (let k = 0; k < steps; k++) {
+        const s = Math.hypot(vx, vz);
+        if (s < 0.02) break;
+        const ax = -(vx / s) * decel;
+        const az = -(vz / s) * decel;
+        vx += ax * stepT;
+        vz += az * stepT;
+        px += vx * stepT;
+        pz += vz * stepT;
+        // cushion reflect
+        if (px - target.radius < -world.tableHalfWidth) {
+          px = -world.tableHalfWidth + target.radius;
+          vx = -vx * world.cushionRestitution;
+        } else if (px + target.radius > world.tableHalfWidth) {
+          px = world.tableHalfWidth - target.radius;
+          vx = -vx * world.cushionRestitution;
+        }
+        if (pz - target.radius < -world.tableHalfLength) {
+          pz = -world.tableHalfLength + target.radius;
+          vz = -vz * world.cushionRestitution;
+        } else if (pz + target.radius > world.tableHalfLength) {
+          pz = world.tableHalfLength - target.radius;
+          vz = -vz * world.cushionRestitution;
+        }
+        predicted.push({ x: px, y: target.radius, z: pz });
+      }
+    }
+
+    // age collision flashes (keep 1.2s)
+    const keptColl = [...collisions, ...newColl].filter((c) => newTime - c.bornAt < 1.2);
+
     set({
       balls: [...balls],
       forces,
       time: newTime,
       samples: newSamples,
       trail: newTrail,
+      predicted,
+      collisions: keptColl,
     });
   },
 }));
