@@ -74,6 +74,12 @@ interface SimState {
   time: number;
   samples: SamplePoint[];
   trail: Vec3[];
+  predicted: Vec3[];
+  collisions: CollisionEvent[];
+  cameraMode: CameraMode;
+  showTrail: boolean;
+  showPredicted: boolean;
+  showLabels: boolean;
   // actions
   setMode: (m: Mode) => void;
   setRunning: (b: boolean) => void;
@@ -81,6 +87,10 @@ interface SimState {
   step: (dt: number) => void;
   setToggle: (k: keyof VectorToggles, v: boolean) => void;
   setControl: <K extends keyof ControlsState>(k: K, v: ControlsState[K]) => void;
+  setCameraMode: (m: CameraMode) => void;
+  setShowTrail: (b: boolean) => void;
+  setShowPredicted: (b: boolean) => void;
+  setShowLabels: (b: boolean) => void;
   shoot: () => void;
 }
 
