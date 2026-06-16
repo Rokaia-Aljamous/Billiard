@@ -187,6 +187,8 @@ export const useSim = create<SimState>((set, get) => ({
       time: 0,
       samples: [],
       trail: [],
+      predicted: [],
+      collisions: [],
       forces: {},
       running: false,
     });
@@ -204,6 +206,10 @@ export const useSim = create<SimState>((set, get) => ({
       };
       return { controls, world };
     }),
+  setCameraMode: (m) => set({ cameraMode: m }),
+  setShowTrail: (b) => set({ showTrail: b }),
+  setShowPredicted: (b) => set({ showPredicted: b }),
+  setShowLabels: (b) => set({ showLabels: b }),
 
   shoot: () => {
     const { balls, controls, mode } = get();
