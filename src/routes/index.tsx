@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Scene3D } from "@/components/sim/Scene3D";
+import { SceneToolbar } from "@/components/sim/SceneToolbar";
 import { MathPanel } from "@/components/sim/MathPanel";
 import { Controls } from "@/components/sim/Controls";
 import { Charts } from "@/components/sim/Charts";
