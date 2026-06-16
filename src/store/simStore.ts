@@ -175,6 +175,8 @@ export const useSim = create<SimState>((set, get) => ({
       time: 0,
       samples: [],
       trail: [],
+      predicted: [],
+      collisions: [],
       forces: {},
       running: false,
     });
