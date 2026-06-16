@@ -17,7 +17,6 @@ const VectorArrow = ({
   scale?: number;
 }) => {
   const len = vlen(vec) * scale;
-  if (len < 0.01) return null;
   const dir = vnorm(vec);
   const tip = {
     x: origin.x + dir.x * len,
@@ -31,7 +30,7 @@ const VectorArrow = ({
     ],
     [origin.x, origin.y, origin.z, tip.x, tip.y, tip.z],
   );
-  // arrow head via small cone
+  if (len < 0.01) return null;
   const headDir = new THREE.Vector3(dir.x, dir.y, dir.z);
   const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), headDir);
   const euler = new THREE.Euler().setFromQuaternion(quat);
