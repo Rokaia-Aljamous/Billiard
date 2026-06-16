@@ -54,6 +54,7 @@ const VECTOR_KEYS: { key: keyof VectorToggles; label: string; color: string }[] 
   { key: "gravity", label: "Gravity", color: "#ef5350" },
   { key: "normal", label: "Normal", color: "#81c784" },
   { key: "friction", label: "Friction", color: "#ffb74d" },
+  { key: "impulse", label: "Collision Impulse", color: "#ff5252" },
 ];
 
 export const Controls = () => {
