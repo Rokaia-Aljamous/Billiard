@@ -52,8 +52,9 @@ function Lab() {
 
         <section className="order-1 space-y-4 xl:order-2">
           <ModuleTabs />
-          <div className="h-[60vh] min-h-[460px] overflow-hidden rounded-lg border border-border/50">
+          <div className="relative h-[62vh] min-h-[480px] overflow-hidden rounded-lg border border-border/50 bg-[#070a10] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)]">
             <Scene3D />
+            <SceneToolbar />
           </div>
           <Charts />
         </section>
