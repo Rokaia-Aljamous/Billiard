@@ -20,6 +20,8 @@ import {
 
 export type Mode = "single" | "rotation" | "collision" | "cushion" | "jump";
 
+export type CameraMode = "orbit" | "top" | "side" | "follow" | "analysis";
+
 export interface VectorToggles {
   gravity: boolean;
   normal: boolean;
@@ -28,6 +30,15 @@ export interface VectorToggles {
   acceleration: boolean;
   momentum: boolean;
   omega: boolean;
+  impulse: boolean;
+}
+
+export interface CollisionEvent {
+  id: number;
+  pos: Vec3;
+  magnitude: number;
+  normal: Vec3;
+  bornAt: number;
 }
 
 export interface SamplePoint {
