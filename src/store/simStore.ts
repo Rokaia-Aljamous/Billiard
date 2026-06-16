@@ -153,12 +153,19 @@ export const useSim = create<SimState>((set, get) => ({
     acceleration: false,
     momentum: false,
     omega: true,
+    impulse: true,
   },
   controls: defaultControls(),
   running: false,
   time: 0,
   samples: [],
   trail: [],
+  predicted: [],
+  collisions: [],
+  cameraMode: "orbit",
+  showTrail: true,
+  showPredicted: true,
+  showLabels: true,
 
   setMode: (m) => {
     const c = get().controls;
