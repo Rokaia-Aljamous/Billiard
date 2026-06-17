@@ -188,6 +188,7 @@ export const useSim = create<SimState>((set, get) => ({
       collisions: [],
       forces: {},
       running: false,
+      shotPhase: "idle",
     });
   },
   setRunning: (b) => set({ running: b }),
@@ -202,6 +203,7 @@ export const useSim = create<SimState>((set, get) => ({
       collisions: [],
       forces: {},
       running: false,
+      shotPhase: "idle",
     });
   },
   setToggle: (k, val) => set((s) => ({ toggles: { ...s.toggles, [k]: val } })),
@@ -215,15 +217,27 @@ export const useSim = create<SimState>((set, get) => ({
         restitution: controls.restitution,
         cushionRestitution: controls.restitution * 0.9,
       };
-      return { controls, world };
+      const patch: Partial<SimState> = { controls, world };
+      if (k === "impactAngle") {
+        patch.aimAngle = ((val as number) * Math.PI) / 180;
+      }
+      return patch as SimState;
     }),
   setCameraMode: (m) => set({ cameraMode: m }),
   setShowTrail: (b) => set({ showTrail: b }),
   setShowPredicted: (b) => set({ showPredicted: b }),
   setShowLabels: (b) => set({ showLabels: b }),
+  setAimAngle: (rad) => set({ aimAngle: rad }),
+  setShotPhase: (p) => set({ shotPhase: p }),
 
   shoot: () => {
-    const { balls, controls, mode } = get();
+    const { shotPhase, running } = get();
+    if (running || shotPhase !== "idle") return;
+    set({ shotPhase: "pullback" });
+  },
+
+  commitShot: () => {
+    const { balls, controls, mode, aimAngle } = get();
     if (!balls.length) return;
     const cue = balls[0];
     let offRight = 0;
@@ -247,9 +261,11 @@ export const useSim = create<SimState>((set, get) => ({
     if (mode === "jump") {
       offUp = -r;
     }
-    applyCue(cue, controls.impactForce, controls.impactAngle, offRight, offUp);
-    set({ running: true });
+    const angleDeg = (aimAngle * 180) / Math.PI;
+    applyCue(cue, controls.impactForce, angleDeg, offRight, offUp);
+    set({ running: true, shotPhase: "fired" });
   },
+
 
   step: (dt) => {
     const { balls, world, time, samples, trail, collisions } = get();
