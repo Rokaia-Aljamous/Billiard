@@ -1,4 +1,4 @@
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
@@ -8,7 +8,7 @@ import {
   SoftShadows,
   Grid,
 } from "@react-three/drei";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useSim, CameraMode, CollisionEvent } from "@/store/simStore";
 import { Ball, Vec3, vlen, vnorm, vscale } from "@/physics/types";
@@ -437,6 +437,371 @@ const Vectors = () => {
 };
 
 /* -------------------------------------------------------------------------- */
+/*  Cue stick + aiming guide (visible only before the shot)                    */
+/* -------------------------------------------------------------------------- */
+
+const CUE_LENGTH = 1.45;
+
+const CueStick = () => {
+  const cue = useSim((s) => s.balls[0]);
+  const aim = useSim((s) => s.aimAngle);
+  const phase = useSim((s) => s.shotPhase);
+  const running = useSim((s) => s.running);
+  const commit = useSim((s) => s.commitShot);
+  const setPhase = useSim((s) => s.setShotPhase);
+
+  const groupRef = useRef<THREE.Group>(null!);
+  const pull = useRef(0);
+  const phaseT = useRef(0);
+  const PULL_DUR = 0.55;
+  const STRIKE_DUR = 0.07;
+  const MAX_PULL = 0.22;
+
+  useFrame((_, dt) => {
+    if (phase === "pullback") {
+      phaseT.current += dt;
+      const t = Math.min(1, phaseT.current / PULL_DUR);
+      // ease-out
+      pull.current = MAX_PULL * (1 - Math.pow(1 - t, 2));
+      if (t >= 1) {
+        phaseT.current = 0;
+        setPhase("impact");
+      }
+    } else if (phase === "impact") {
+      phaseT.current += dt;
+      const t = Math.min(1, phaseT.current / STRIKE_DUR);
+      pull.current = MAX_PULL * (1 - t);
+      if (t >= 1) {
+        phaseT.current = 0;
+        commit();
+      }
+    } else {
+      phaseT.current = 0;
+      pull.current = 0;
+    }
+
+    if (!groupRef.current || !cue) return;
+    const dx = Math.sin(aim);
+    const dz = -Math.cos(aim);
+    const gap = cue.radius + pull.current;
+    groupRef.current.position.set(
+      cue.pos.x - dx * gap,
+      cue.pos.y,
+      cue.pos.z - dz * gap,
+    );
+    groupRef.current.rotation.set(0, -aim, 0);
+  });
+
+  if (running || !cue || phase === "fired") return null;
+
+  return (
+    <group ref={groupRef}>
+      {/* tip (leather) */}
+      <mesh position={[0, 0, 0.004]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.0065, 0.0065, 0.008, 16]} />
+        <meshStandardMaterial color="#1f4f9e" roughness={0.55} />
+      </mesh>
+      {/* ferrule (white) */}
+      <mesh position={[0, 0, 0.018]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.0068, 0.0072, 0.018, 16]} />
+        <meshStandardMaterial color="#f4ead7" roughness={0.4} />
+      </mesh>
+      {/* shaft (maple) */}
+      <mesh position={[0, 0, 0.027 + 0.55 / 2]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.0072, 0.011, 0.55, 24]} />
+        <meshStandardMaterial color="#e3c089" roughness={0.45} metalness={0.05} />
+      </mesh>
+      {/* joint ring */}
+      <mesh position={[0, 0, 0.027 + 0.55]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.0112, 0.0112, 0.012, 24]} />
+        <meshStandardMaterial color="#d9d2c2" metalness={0.7} roughness={0.25} />
+      </mesh>
+      {/* butt (rosewood) */}
+      <mesh
+        position={[0, 0, 0.027 + 0.55 + 0.012 + (CUE_LENGTH - 0.55 - 0.027 - 0.012) / 2]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        castShadow
+      >
+        <cylinderGeometry
+          args={[0.011, 0.014, CUE_LENGTH - 0.55 - 0.027 - 0.012, 24]}
+        />
+        <meshStandardMaterial color="#2b1208" roughness={0.5} metalness={0.1} />
+      </mesh>
+      {/* wrap accent */}
+      <mesh position={[0, 0, 0.027 + 0.55 + 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.0125, 0.0125, 0.11, 24]} />
+        <meshStandardMaterial color="#0e0e10" roughness={0.85} />
+      </mesh>
+      {/* bumper */}
+      <mesh position={[0, 0, CUE_LENGTH + 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.014, 0.014, 0.014, 24]} />
+        <meshStandardMaterial color="#0a0a0a" roughness={1} />
+      </mesh>
+    </group>
+  );
+};
+
+/**
+ * Predict first contact along current aim direction.
+ * Returns either a ball hit or a cushion hit.
+ */
+type AimHit =
+  | { kind: "ball"; t: number; contact: Vec3; postDir: Vec3; ghost: Vec3; target: Ball }
+  | { kind: "cushion"; t: number; contact: Vec3 }
+  | null;
+
+const predictAim = (
+  cue: Ball,
+  others: Ball[],
+  aim: number,
+  hw: number,
+  hl: number,
+): AimHit => {
+  const dx = Math.sin(aim);
+  const dz = -Math.cos(aim);
+  let best: AimHit = null;
+  for (const o of others) {
+    const ox = o.pos.x - cue.pos.x;
+    const oz = o.pos.z - cue.pos.z;
+    const tca = ox * dx + oz * dz;
+    if (tca <= 0) continue;
+    const d2 = ox * ox + oz * oz - tca * tca;
+    const R = cue.radius + o.radius;
+    if (d2 > R * R) continue;
+    const t = tca - Math.sqrt(R * R - d2);
+    if (t <= 0) continue;
+    if (!best || t < best.t) {
+      const ghost = {
+        x: cue.pos.x + dx * t,
+        y: cue.radius,
+        z: cue.pos.z + dz * t,
+      };
+      const nlx = o.pos.x - ghost.x;
+      const nlz = o.pos.z - ghost.z;
+      const nl = Math.hypot(nlx, nlz) || 1;
+      const nx = nlx / nl;
+      const nz = nlz / nl;
+      const contact = {
+        x: ghost.x + nx * cue.radius,
+        y: cue.radius,
+        z: ghost.z + nz * cue.radius,
+      };
+      best = {
+        kind: "ball",
+        t,
+        contact,
+        ghost,
+        postDir: { x: nx, y: 0, z: nz },
+        target: o,
+      };
+    }
+  }
+  if (best) return best;
+  // cushion intersection
+  const tx = dx > 0
+    ? (hw - cue.radius - cue.pos.x) / dx
+    : dx < 0
+      ? (-hw + cue.radius - cue.pos.x) / dx
+      : Infinity;
+  const tz = dz > 0
+    ? (hl - cue.radius - cue.pos.z) / dz
+    : dz < 0
+      ? (-hl + cue.radius - cue.pos.z) / dz
+      : Infinity;
+  const t = Math.max(0, Math.min(tx, tz));
+  if (!isFinite(t)) return null;
+  return {
+    kind: "cushion",
+    t,
+    contact: {
+      x: cue.pos.x + dx * t,
+      y: cue.radius,
+      z: cue.pos.z + dz * t,
+    },
+  };
+};
+
+const AimingGuide = () => {
+  const balls = useSim((s) => s.balls);
+  const aim = useSim((s) => s.aimAngle);
+  const phase = useSim((s) => s.shotPhase);
+  const running = useSim((s) => s.running);
+  const world = useSim((s) => s.world);
+  const showLabels = useSim((s) => s.showLabels);
+
+  if (running || phase === "fired" || !balls.length) return null;
+  const cue = balls[0];
+  const others = balls.slice(1);
+  const hit = predictAim(cue, others, aim, world.tableHalfWidth, world.tableHalfLength);
+  if (!hit) return null;
+
+  const dx = Math.sin(aim);
+  const dz = -Math.cos(aim);
+  const linePts = [
+    new THREE.Vector3(cue.pos.x, cue.pos.y + 0.001, cue.pos.z),
+    new THREE.Vector3(hit.contact.x, cue.pos.y + 0.001, hit.contact.z),
+  ];
+
+  // shot direction arrow (short, attached to ball, current aim)
+  const arrowLen = 0.18;
+  const dirArrowEnd = {
+    x: cue.pos.x + dx * arrowLen,
+    y: cue.pos.y + 0.001,
+    z: cue.pos.z + dz * arrowLen,
+  };
+  const dirArrowPts = [
+    new THREE.Vector3(cue.pos.x, cue.pos.y + 0.001, cue.pos.z),
+    new THREE.Vector3(dirArrowEnd.x, dirArrowEnd.y, dirArrowEnd.z),
+  ];
+  const arrowHeadDir = new THREE.Vector3(dx, 0, dz);
+  const arrowQuat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    arrowHeadDir,
+  );
+  const arrowEuler = new THREE.Euler().setFromQuaternion(arrowQuat);
+
+  return (
+    <group>
+      {/* aim guide line */}
+      <Line
+        points={linePts}
+        color="#ffffff"
+        lineWidth={1.4}
+        dashed
+        dashSize={0.04}
+        gapSize={0.025}
+        transparent
+        opacity={0.55}
+      />
+
+      {/* shot direction arrow (solid, near ball) */}
+      <Line points={dirArrowPts} color="#ff9b3d" lineWidth={3} />
+      <mesh
+        position={[dirArrowEnd.x, dirArrowEnd.y, dirArrowEnd.z]}
+        rotation={[arrowEuler.x, arrowEuler.y, arrowEuler.z]}
+      >
+        <coneGeometry args={[0.018, 0.05, 16]} />
+        <meshBasicMaterial color="#ff9b3d" />
+      </mesh>
+
+      {hit.kind === "ball" && (
+        <>
+          {/* ghost cue ball at contact */}
+          <mesh position={[hit.ghost.x, hit.ghost.y, hit.ghost.z]}>
+            <sphereGeometry args={[cue.radius * 1.005, 24, 24]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.18} wireframe />
+          </mesh>
+          {/* contact marker */}
+          <mesh
+            position={[hit.contact.x, 0.003, hit.contact.z]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <ringGeometry args={[0.008, 0.014, 24]} />
+            <meshBasicMaterial color="#ff5252" />
+          </mesh>
+          {/* post-collision target arrow */}
+          <VectorArrow
+            origin={{ x: hit.target.pos.x, y: hit.target.pos.y, z: hit.target.pos.z }}
+            vec={vscale(hit.postDir, 0.4)}
+            color="#ff5252"
+            scale={1}
+            label="post"
+            unit=""
+            showLabel={showLabels}
+          />
+          {showLabels && (
+            <Html
+              position={[hit.contact.x, 0.06, hit.contact.z]}
+              center
+              distanceFactor={1.4}
+              style={{ pointerEvents: "none" }}
+            >
+              <div
+                className="rounded-sm px-1.5 py-0.5 font-mono text-[9px] leading-none"
+                style={{
+                  background: "rgba(8,12,20,0.78)",
+                  color: "#ff5252",
+                  border: "1px solid #ff525255",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                contact d={hit.t.toFixed(2)} m
+              </div>
+            </Html>
+          )}
+        </>
+      )}
+      {hit.kind === "cushion" && (
+        <mesh
+          position={[hit.contact.x, 0.003, hit.contact.z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <ringGeometry args={[0.01, 0.018, 24]} />
+          <meshBasicMaterial color="#4fc3f7" />
+        </mesh>
+      )}
+    </group>
+  );
+};
+
+/**
+ * Invisible interaction plane for mouse-drag aiming.
+ * Active only when cue is visible (not running, idle phase).
+ */
+const AimPlane = () => {
+  const cue = useSim((s) => s.balls[0]);
+  const setAim = useSim((s) => s.setAimAngle);
+  const phase = useSim((s) => s.shotPhase);
+  const running = useSim((s) => s.running);
+  const world = useSim((s) => s.world);
+  const [dragging, setDragging] = useState(false);
+  const { gl } = useThree();
+
+  useEffect(() => {
+    if (dragging) gl.domElement.style.cursor = "grabbing";
+    else gl.domElement.style.cursor = "";
+  }, [dragging, gl]);
+
+  if (running || phase !== "idle" || !cue) return null;
+
+  const updateAim = (e: ThreeEvent<PointerEvent>) => {
+    const p = e.point;
+    // aim from cue ball toward pointer (we want shot to go that way)
+    const dx = p.x - cue.pos.x;
+    const dz = p.z - cue.pos.z;
+    if (dx * dx + dz * dz < 1e-6) return;
+    // angle such that dir = (sin a, 0, -cos a)
+    const a = Math.atan2(dx, -dz);
+    setAim(a);
+  };
+
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0.002, 0]}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        (e.target as Element)?.setPointerCapture?.(e.pointerId);
+        setDragging(true);
+        updateAim(e);
+      }}
+      onPointerMove={(e) => {
+        if (!dragging) return;
+        updateAim(e);
+      }}
+      onPointerUp={(e) => {
+        (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+        setDragging(false);
+      }}
+      onPointerLeave={() => setDragging(false)}
+    >
+      <planeGeometry args={[world.tableHalfWidth * 2.4, world.tableHalfLength * 2.4]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
 /*  Physics ticker                                                             */
 /* -------------------------------------------------------------------------- */
 const Ticker = () => {
@@ -563,6 +928,9 @@ export const Scene3D = () => {
       <Predicted />
       <Collisions />
       <Vectors />
+      <AimingGuide />
+      <CueStick />
+      <AimPlane />
 
       {/* Engineering reference grid below the table */}
       <Grid
