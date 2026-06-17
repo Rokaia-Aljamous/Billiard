@@ -1,4 +1,4 @@
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
@@ -8,7 +8,7 @@ import {
   SoftShadows,
   Grid,
 } from "@react-three/drei";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useSim, CameraMode, CollisionEvent } from "@/store/simStore";
 import { Ball, Vec3, vlen, vnorm, vscale } from "@/physics/types";
