@@ -927,9 +927,6 @@ export const Scene3D = () => {
       <Trail />
       <Predicted />
       <Collisions />
-      <Trail />
-      <Predicted />
-      <Collisions />
       <Vectors />
       <AimingGuide />
       <CueStick />
