@@ -33,6 +33,8 @@ export interface VectorToggles {
   impulse: boolean;
 }
 
+export type ShotPhase = "idle" | "pullback" | "impact" | "fired";
+
 export interface CollisionEvent {
   id: number;
   pos: Vec3;
