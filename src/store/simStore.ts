@@ -365,7 +365,15 @@ export const useSim = create<SimState>((set, get) => ({
     // age collision flashes (keep 1.2s)
     const keptColl = [...collisions, ...newColl].filter((c) => newTime - c.bornAt < 1.2);
 
-    set({
+    // Auto-stop when all balls are essentially at rest
+    let maxSpeed = 0;
+    for (const b of balls) {
+      const s = vlen(b.vel);
+      if (s > maxSpeed) maxSpeed = s;
+    }
+    const stateRunning = get().running;
+    const stateShotPhase = get().shotPhase;
+    const patch: Partial<SimState> = {
       balls: [...balls],
       forces,
       time: newTime,
@@ -373,7 +381,12 @@ export const useSim = create<SimState>((set, get) => ({
       trail: newTrail,
       predicted,
       collisions: keptColl,
-    });
+    };
+    if (stateRunning && maxSpeed < 0.015 && stateShotPhase !== "pullback" && stateShotPhase !== "impact") {
+      patch.running = false;
+      patch.shotPhase = "idle";
+    }
+    set(patch as SimState);
   },
 }));
 
