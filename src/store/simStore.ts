@@ -173,6 +173,8 @@ export const useSim = create<SimState>((set, get) => ({
   showTrail: true,
   showPredicted: true,
   showLabels: true,
+  aimAngle: 0,
+  shotPhase: "idle",
 
   setMode: (m) => {
     const c = get().controls;
