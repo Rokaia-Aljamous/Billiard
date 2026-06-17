@@ -99,15 +99,6 @@ interface SimState {
   setShotPhase: (p: ShotPhase) => void;
   commitShot: () => void;
   shoot: () => void;
-  reset: () => void;
-  step: (dt: number) => void;
-  setToggle: (k: keyof VectorToggles, v: boolean) => void;
-  setControl: <K extends keyof ControlsState>(k: K, v: ControlsState[K]) => void;
-  setCameraMode: (m: CameraMode) => void;
-  setShowTrail: (b: boolean) => void;
-  setShowPredicted: (b: boolean) => void;
-  setShowLabels: (b: boolean) => void;
-  shoot: () => void;
 }
 
 const defaultControls = (): ControlsState => ({
