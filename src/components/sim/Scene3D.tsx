@@ -927,7 +927,13 @@ export const Scene3D = () => {
       <Trail />
       <Predicted />
       <Collisions />
+      <Trail />
+      <Predicted />
+      <Collisions />
       <Vectors />
+      <AimingGuide />
+      <CueStick />
+      <AimPlane />
 
       {/* Engineering reference grid below the table */}
       <Grid
