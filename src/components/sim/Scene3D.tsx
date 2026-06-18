@@ -757,20 +757,21 @@ const AimPlane = () => {
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const world = useSim((s) => s.world);
+  const shoot = useSim((s) => s.shoot);
   const [dragging, setDragging] = useState(false);
+  const dragDist = useRef(0);
   const aimRef = useRef(aim);
   aimRef.current = aim;
   const { gl } = useThree();
 
   useEffect(() => {
     if (dragging) gl.domElement.style.cursor = "grabbing";
-    else gl.domElement.style.cursor = phase === "idle" && !running ? "grab" : "";
+    else gl.domElement.style.cursor = phase === "idle" && !running ? "crosshair" : "";
   }, [dragging, gl, phase, running]);
 
   if (running || phase !== "idle" || !cue) return null;
 
   const normalize = (a: number) => {
-    // wrap to (-PI, PI]
     let x = a;
     while (x > Math.PI) x -= Math.PI * 2;
     while (x <= -Math.PI) x += Math.PI * 2;
@@ -785,19 +786,23 @@ const AimPlane = () => {
         if (e.button !== 0) return;
         e.stopPropagation();
         (e.target as Element)?.setPointerCapture?.(e.pointerId);
+        dragDist.current = 0;
         setDragging(true);
       }}
       onPointerMove={(e) => {
         if (!dragging) return;
         e.stopPropagation();
-        // Horizontal mouse motion rotates the cue around the cue ball.
         const mx = (e.nativeEvent as PointerEvent).movementX || 0;
+        const my = (e.nativeEvent as PointerEvent).movementY || 0;
+        dragDist.current += Math.abs(mx) + Math.abs(my);
         if (!mx) return;
         setAim(normalize(aimRef.current + mx * AIM_SENSITIVITY));
       }}
       onPointerUp={(e) => {
         (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+        const wasClick = dragDist.current < 4;
         setDragging(false);
+        if (wasClick) shoot();
       }}
       onPointerLeave={() => setDragging(false)}
     >
