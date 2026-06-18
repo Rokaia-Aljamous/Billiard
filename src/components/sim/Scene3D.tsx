@@ -819,21 +819,48 @@ export const AimHUD = () => {
   const aim = useSim((s) => s.aimAngle);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
-  if (running || phase !== "idle") return null;
+  const force = useSim((s) => s.controls.impactForce);
+  const reset = useSim((s) => s.reset);
+  const blocked = running || phase !== "idle";
   let deg = (aim * 180) / Math.PI;
-  // normalise to [0, 360)
   deg = ((deg % 360) + 360) % 360;
+  const FMIN = 5;
+  const FMAX = 200;
+  const pct = Math.round(((force - FMIN) / (FMAX - FMIN)) * 100);
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-md border border-cyan-400/30 bg-slate-900/80 px-3 py-2 font-mono text-[11px] text-cyan-300 shadow-lg backdrop-blur">
-      <div className="text-[9px] uppercase tracking-widest text-cyan-400/70">
-        Aim Angle
+    <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col gap-2">
+      <div className="rounded-md border border-cyan-400/30 bg-slate-900/80 px-3 py-2 font-mono text-[11px] text-cyan-300 shadow-lg backdrop-blur">
+        <div className="flex gap-4">
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-cyan-400/70">Aim</div>
+            <div className="mt-0.5 text-sm font-semibold tabular-nums">{deg.toFixed(1)}°</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-amber-300/80">Power</div>
+            <div className="mt-0.5 text-sm font-semibold tabular-nums text-amber-200">
+              {pct}% <span className="text-[9px] text-amber-300/60">({force.toFixed(0)} N)</span>
+            </div>
+            <div className="mt-1 h-1 w-24 overflow-hidden rounded-full bg-slate-700/60">
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 to-rose-500 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="mt-1.5 text-[9px] leading-tight text-slate-400">
+          {blocked
+            ? "Balls in motion — wait for rest"
+            : "Drag = aim · Wheel = power · Click = shoot"}
+        </div>
       </div>
-      <div className="mt-0.5 text-sm font-semibold tabular-nums">
-        {deg.toFixed(1)}°
-      </div>
-      <div className="mt-1 text-[9px] text-slate-400">
-        Drag left / right to rotate cue
-      </div>
+      <button
+        type="button"
+        onClick={reset}
+        className="pointer-events-auto self-start rounded-md border border-rose-400/40 bg-rose-950/60 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-rose-200 shadow hover:bg-rose-900/70"
+      >
+        Reset Table
+      </button>
     </div>
   );
 };
