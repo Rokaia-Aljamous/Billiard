@@ -5,6 +5,7 @@ import { MathPanel } from "@/components/sim/MathPanel";
 import { Controls } from "@/components/sim/Controls";
 import { Charts } from "@/components/sim/Charts";
 import { ModuleTabs } from "@/components/sim/ModuleTabs";
+import { useSim } from "@/store/simStore";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -52,7 +53,17 @@ function Lab() {
 
         <section className="order-1 space-y-4 xl:order-2">
           <ModuleTabs />
-          <div className="relative h-[62vh] min-h-[480px] overflow-hidden rounded-lg border border-border/50 bg-[#070a10] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)]">
+          <div
+            className="relative h-[62vh] min-h-[480px] overflow-hidden rounded-lg border border-border/50 bg-[#070a10] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)]"
+            onWheel={(e) => {
+              const st = useSim.getState();
+              if (st.running || st.shotPhase !== "idle") return;
+              e.preventDefault();
+              const delta = -Math.sign(e.deltaY) * 3;
+              const next = Math.max(5, Math.min(200, st.controls.impactForce + delta));
+              st.setControl("impactForce", next);
+            }}
+          >
             <Scene3D />
             <SceneToolbar />
             <AimHUD />
