@@ -55,6 +55,7 @@ function Lab() {
           <div className="relative h-[62vh] min-h-[480px] overflow-hidden rounded-lg border border-border/50 bg-[#070a10] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)]">
             <Scene3D />
             <SceneToolbar />
+            <AimHUD />
           </div>
           <Charts />
         </section>
