@@ -126,6 +126,52 @@ const mkBall = (id: number, color: string, c: ControlsState, pos: Vec3): Ball =>
   airborne: false,
 });
 
+// Standard 8-ball colors (1-7 solids, 8 black, 9-15 stripes shown as lighter shades)
+const BALL_COLORS: Record<number, string> = {
+  1: "#f4c20d",  // yellow solid
+  2: "#1d4ed8",  // blue solid
+  3: "#dc2626",  // red solid
+  4: "#6d28d9",  // purple solid
+  5: "#ea580c",  // orange solid
+  6: "#15803d",  // green solid
+  7: "#7f1d1d",  // maroon solid
+  8: "#0a0a0a",  // black
+  9: "#fde047",  // yellow stripe
+  10: "#60a5fa", // blue stripe
+  11: "#f87171", // red stripe
+  12: "#a78bfa", // purple stripe
+  13: "#fb923c", // orange stripe
+  14: "#4ade80", // green stripe
+  15: "#b91c1c", // maroon stripe
+};
+
+// Build a standard 8-ball rack. Apex points toward cue ball (positive Z).
+// 8-ball in the middle of row 3; back-row corners are one solid, one stripe.
+const buildRack = (c: ControlsState, apexZ: number): Ball[] => {
+  // Layout numbers row-by-row. Row 1 = apex (closest to cue).
+  const layout: number[][] = [
+    [1],
+    [9, 2],
+    [10, 8, 3],
+    [4, 11, 12, 5],
+    [6, 13, 14, 7, 15],
+  ];
+  const r = c.radius;
+  const dx = 2 * r;
+  const dz = r * Math.sqrt(3);
+  const balls: Ball[] = [mkBall(0, "#ffffff", c, v(0, 0, 0.8))];
+  for (let row = 0; row < layout.length; row++) {
+    const count = layout[row].length;
+    const z = apexZ - row * dz;
+    const xStart = -((count - 1) / 2) * dx;
+    for (let i = 0; i < count; i++) {
+      const num = layout[row][i];
+      balls.push(mkBall(num, BALL_COLORS[num], c, v(xStart + i * dx, 0, z)));
+    }
+  }
+  return balls;
+};
+
 const setupBalls = (mode: Mode, c: ControlsState): Ball[] => {
   switch (mode) {
     case "single":
@@ -133,10 +179,8 @@ const setupBalls = (mode: Mode, c: ControlsState): Ball[] => {
     case "rotation":
       return [mkBall(0, "#ffd84d", c, v(0, 0, 0))];
     case "collision":
-      return [
-        mkBall(0, "#ffffff", c, v(0, 0, 0.8)),
-        mkBall(1, "#e53935", c, v(0, 0, -0.4)),
-      ];
+      // Full standard 8-ball rack at foot spot.
+      return buildRack(c, -0.5);
     case "cushion":
       return [mkBall(0, "#ffffff", c, v(-0.4, 0, 0.8))];
     case "jump":
