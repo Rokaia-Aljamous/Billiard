@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Scene3D } from "@/components/sim/Scene3D";
+import { Scene3D, AimHUD } from "@/components/sim/Scene3D";
 import { SceneToolbar } from "@/components/sim/SceneToolbar";
 import { MathPanel } from "@/components/sim/MathPanel";
 import { Controls } from "@/components/sim/Controls";
@@ -55,6 +55,7 @@ function Lab() {
           <div className="relative h-[62vh] min-h-[480px] overflow-hidden rounded-lg border border-border/50 bg-[#070a10] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)]">
             <Scene3D />
             <SceneToolbar />
+            <AimHUD />
           </div>
           <Charts />
         </section>

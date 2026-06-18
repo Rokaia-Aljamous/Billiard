@@ -748,31 +748,33 @@ const AimingGuide = () => {
  * Invisible interaction plane for mouse-drag aiming.
  * Active only when cue is visible (not running, idle phase).
  */
+const AIM_SENSITIVITY = 0.008; // radians per pixel of horizontal drag
+
 const AimPlane = () => {
   const cue = useSim((s) => s.balls[0]);
+  const aim = useSim((s) => s.aimAngle);
   const setAim = useSim((s) => s.setAimAngle);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const world = useSim((s) => s.world);
   const [dragging, setDragging] = useState(false);
+  const aimRef = useRef(aim);
+  aimRef.current = aim;
   const { gl } = useThree();
 
   useEffect(() => {
     if (dragging) gl.domElement.style.cursor = "grabbing";
-    else gl.domElement.style.cursor = "";
-  }, [dragging, gl]);
+    else gl.domElement.style.cursor = phase === "idle" && !running ? "grab" : "";
+  }, [dragging, gl, phase, running]);
 
   if (running || phase !== "idle" || !cue) return null;
 
-  const updateAim = (e: ThreeEvent<PointerEvent>) => {
-    const p = e.point;
-    // aim from cue ball toward pointer (we want shot to go that way)
-    const dx = p.x - cue.pos.x;
-    const dz = p.z - cue.pos.z;
-    if (dx * dx + dz * dz < 1e-6) return;
-    // angle such that dir = (sin a, 0, -cos a)
-    const a = Math.atan2(dx, -dz);
-    setAim(a);
+  const normalize = (a: number) => {
+    // wrap to (-PI, PI]
+    let x = a;
+    while (x > Math.PI) x -= Math.PI * 2;
+    while (x <= -Math.PI) x += Math.PI * 2;
+    return x;
   };
 
   return (
@@ -780,14 +782,18 @@ const AimPlane = () => {
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0.002, 0]}
       onPointerDown={(e) => {
+        if (e.button !== 0) return;
         e.stopPropagation();
         (e.target as Element)?.setPointerCapture?.(e.pointerId);
         setDragging(true);
-        updateAim(e);
       }}
       onPointerMove={(e) => {
         if (!dragging) return;
-        updateAim(e);
+        e.stopPropagation();
+        // Horizontal mouse motion rotates the cue around the cue ball.
+        const mx = (e.nativeEvent as PointerEvent).movementX || 0;
+        if (!mx) return;
+        setAim(normalize(aimRef.current + mx * AIM_SENSITIVITY));
       }}
       onPointerUp={(e) => {
         (e.target as Element)?.releasePointerCapture?.(e.pointerId);
@@ -798,6 +804,32 @@ const AimPlane = () => {
       <planeGeometry args={[world.tableHalfWidth * 2.4, world.tableHalfLength * 2.4]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  HUD — current aim angle readout                                            */
+/* -------------------------------------------------------------------------- */
+export const AimHUD = () => {
+  const aim = useSim((s) => s.aimAngle);
+  const phase = useSim((s) => s.shotPhase);
+  const running = useSim((s) => s.running);
+  if (running || phase !== "idle") return null;
+  let deg = (aim * 180) / Math.PI;
+  // normalise to [0, 360)
+  deg = ((deg % 360) + 360) % 360;
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-md border border-cyan-400/30 bg-slate-900/80 px-3 py-2 font-mono text-[11px] text-cyan-300 shadow-lg backdrop-blur">
+      <div className="text-[9px] uppercase tracking-widest text-cyan-400/70">
+        Aim Angle
+      </div>
+      <div className="mt-0.5 text-sm font-semibold tabular-nums">
+        {deg.toFixed(1)}°
+      </div>
+      <div className="mt-1 text-[9px] text-slate-400">
+        Drag left / right to rotate cue
+      </div>
+    </div>
   );
 };
 
