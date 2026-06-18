@@ -5,6 +5,7 @@ import { MathPanel } from "@/components/sim/MathPanel";
 import { Controls } from "@/components/sim/Controls";
 import { Charts } from "@/components/sim/Charts";
 import { ModuleTabs } from "@/components/sim/ModuleTabs";
+import { useSim } from "@/store/simStore";
 
 export const Route = createFileRoute("/")({
   head: () => ({
