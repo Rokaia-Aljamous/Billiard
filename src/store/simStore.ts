@@ -275,6 +275,8 @@ export const useSim = create<SimState>((set, get) => ({
   setShowPredicted: (b) => set({ showPredicted: b }),
   setShowLabels: (b) => set({ showLabels: b }),
   setAimAngle: (rad) => set({ aimAngle: rad }),
+  setCueElevation: (rad) =>
+    set({ cueElevation: Math.max(0, Math.min(Math.PI / 2.2, rad)) }),
   setShotPhase: (p) => set({ shotPhase: p }),
 
   shoot: () => {
