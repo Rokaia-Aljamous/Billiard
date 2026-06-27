@@ -862,10 +862,43 @@ export const AimHUD = () => {
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col gap-2">
       <div className="rounded-md border border-cyan-400/30 bg-slate-900/80 px-3 py-2 font-mono text-[11px] text-cyan-300 shadow-lg backdrop-blur">
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <div>
             <div className="text-[9px] uppercase tracking-widest text-cyan-400/70">Aim</div>
             <div className="mt-0.5 text-sm font-semibold tabular-nums">{deg.toFixed(1)}°</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-emerald-300/80">Elevation</div>
+            <div className="mt-0.5 text-sm font-semibold tabular-nums text-emerald-200">
+              {elevDeg.toFixed(1)}°
+            </div>
+            <div className="pointer-events-auto mt-1 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setElev(elev - (Math.PI / 180) * 2)}
+                className="rounded border border-emerald-400/40 bg-emerald-950/50 px-1.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
+                title="Lower butt (−2°)"
+              >
+                −
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={80}
+                step={1}
+                value={Math.round(elevDeg)}
+                onChange={(e) => setElev((parseFloat(e.target.value) * Math.PI) / 180)}
+                className="h-1 w-20 cursor-pointer accent-emerald-400"
+              />
+              <button
+                type="button"
+                onClick={() => setElev(elev + (Math.PI / 180) * 2)}
+                className="rounded border border-emerald-400/40 bg-emerald-950/50 px-1.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
+                title="Raise butt (+2°)"
+              >
+                +
+              </button>
+            </div>
           </div>
           <div>
             <div className="text-[9px] uppercase tracking-widest text-amber-300/80">Power</div>
@@ -883,7 +916,7 @@ export const AimHUD = () => {
         <div className="mt-1.5 text-[9px] leading-tight text-slate-400">
           {blocked
             ? "Balls in motion — wait for rest"
-            : "Drag = aim · Wheel = power · Click = shoot"}
+            : "Drag = aim · Shift+drag = elevation · Wheel = power · Click = shoot"}
         </div>
       </div>
       <button
