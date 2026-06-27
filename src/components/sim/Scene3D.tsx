@@ -768,11 +768,14 @@ const AimingGuide = () => {
  * Active only when cue is visible (not running, idle phase).
  */
 const AIM_SENSITIVITY = 0.008; // radians per pixel of horizontal drag
+const ELEV_SENSITIVITY = 0.006; // radians per pixel of vertical drag (Shift)
 
 const AimPlane = () => {
   const cue = useSim((s) => s.balls[0]);
   const aim = useSim((s) => s.aimAngle);
   const setAim = useSim((s) => s.setAimAngle);
+  const elev = useSim((s) => s.cueElevation);
+  const setElev = useSim((s) => s.setCueElevation);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const world = useSim((s) => s.world);
@@ -780,7 +783,9 @@ const AimPlane = () => {
   const [dragging, setDragging] = useState(false);
   const dragDist = useRef(0);
   const aimRef = useRef(aim);
+  const elevRef = useRef(elev);
   aimRef.current = aim;
+  elevRef.current = elev;
   const { gl } = useThree();
 
   useEffect(() => {
@@ -811,11 +816,16 @@ const AimPlane = () => {
       onPointerMove={(e) => {
         if (!dragging) return;
         e.stopPropagation();
-        const mx = (e.nativeEvent as PointerEvent).movementX || 0;
-        const my = (e.nativeEvent as PointerEvent).movementY || 0;
+        const native = e.nativeEvent as PointerEvent;
+        const mx = native.movementX || 0;
+        const my = native.movementY || 0;
         dragDist.current += Math.abs(mx) + Math.abs(my);
-        if (!mx) return;
-        setAim(normalize(aimRef.current + mx * AIM_SENSITIVITY));
+        // Shift + vertical drag = elevation; otherwise horizontal drag = aim
+        if (native.shiftKey) {
+          if (my) setElev(elevRef.current - my * ELEV_SENSITIVITY);
+        } else {
+          if (mx) setAim(normalize(aimRef.current + mx * AIM_SENSITIVITY));
+        }
       }}
       onPointerUp={(e) => {
         (e.target as Element)?.releasePointerCapture?.(e.pointerId);
@@ -836,6 +846,8 @@ const AimPlane = () => {
 /* -------------------------------------------------------------------------- */
 export const AimHUD = () => {
   const aim = useSim((s) => s.aimAngle);
+  const elev = useSim((s) => s.cueElevation);
+  const setElev = useSim((s) => s.setCueElevation);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const force = useSim((s) => s.controls.impactForce);
@@ -843,6 +855,7 @@ export const AimHUD = () => {
   const blocked = running || phase !== "idle";
   let deg = (aim * 180) / Math.PI;
   deg = ((deg % 360) + 360) % 360;
+  const elevDeg = (elev * 180) / Math.PI;
   const FMIN = 5;
   const FMAX = 200;
   const pct = Math.round(((force - FMIN) / (FMAX - FMIN)) * 100);
