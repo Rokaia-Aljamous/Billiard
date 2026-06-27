@@ -220,6 +220,7 @@ export const useSim = create<SimState>((set, get) => ({
   showPredicted: true,
   showLabels: true,
   aimAngle: 0,
+  cueElevation: 0.09, // ~5° default lift
   shotPhase: "idle",
 
   setMode: (m) => {
