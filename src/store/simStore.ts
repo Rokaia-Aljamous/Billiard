@@ -83,6 +83,7 @@ interface SimState {
   showPredicted: boolean;
   showLabels: boolean;
   aimAngle: number; // radians; 0 = -Z, matches applyCue convention
+  cueElevation: number; // radians, 0 = horizontal, positive = butt raised
   shotPhase: ShotPhase;
   // actions
   setMode: (m: Mode) => void;
