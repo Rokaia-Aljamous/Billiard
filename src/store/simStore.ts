@@ -97,6 +97,7 @@ interface SimState {
   setShowPredicted: (b: boolean) => void;
   setShowLabels: (b: boolean) => void;
   setAimAngle: (rad: number) => void;
+  setCueElevation: (rad: number) => void;
   setShotPhase: (p: ShotPhase) => void;
   commitShot: () => void;
   shoot: () => void;
