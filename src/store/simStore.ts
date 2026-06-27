@@ -83,6 +83,7 @@ interface SimState {
   showPredicted: boolean;
   showLabels: boolean;
   aimAngle: number; // radians; 0 = -Z, matches applyCue convention
+  cueElevation: number; // radians, 0 = horizontal, positive = butt raised
   shotPhase: ShotPhase;
   // actions
   setMode: (m: Mode) => void;
@@ -96,6 +97,7 @@ interface SimState {
   setShowPredicted: (b: boolean) => void;
   setShowLabels: (b: boolean) => void;
   setAimAngle: (rad: number) => void;
+  setCueElevation: (rad: number) => void;
   setShotPhase: (p: ShotPhase) => void;
   commitShot: () => void;
   shoot: () => void;
@@ -218,6 +220,7 @@ export const useSim = create<SimState>((set, get) => ({
   showPredicted: true,
   showLabels: true,
   aimAngle: 0,
+  cueElevation: 0.09, // ~5° default lift
   shotPhase: "idle",
 
   setMode: (m) => {
@@ -272,6 +275,8 @@ export const useSim = create<SimState>((set, get) => ({
   setShowPredicted: (b) => set({ showPredicted: b }),
   setShowLabels: (b) => set({ showLabels: b }),
   setAimAngle: (rad) => set({ aimAngle: rad }),
+  setCueElevation: (rad) =>
+    set({ cueElevation: Math.max(0, Math.min(Math.PI / 2.2, rad)) }),
   setShotPhase: (p) => set({ shotPhase: p }),
 
   shoot: () => {

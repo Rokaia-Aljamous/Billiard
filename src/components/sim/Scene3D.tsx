@@ -445,23 +445,26 @@ const CUE_LENGTH = 1.45;
 const CueStick = () => {
   const cue = useSim((s) => s.balls[0]);
   const aim = useSim((s) => s.aimAngle);
+  const elevation = useSim((s) => s.cueElevation);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const commit = useSim((s) => s.commitShot);
   const setPhase = useSim((s) => s.setShotPhase);
 
   const groupRef = useRef<THREE.Group>(null!);
+  const pitchRef = useRef<THREE.Group>(null!);
   const pull = useRef(0);
   const phaseT = useRef(0);
   const PULL_DUR = 0.55;
   const STRIKE_DUR = 0.07;
   const MAX_PULL = 0.22;
+  // smooth elevation
+  const smoothElev = useRef(elevation);
 
   useFrame((_, dt) => {
     if (phase === "pullback") {
       phaseT.current += dt;
       const t = Math.min(1, phaseT.current / PULL_DUR);
-      // ease-out
       pull.current = MAX_PULL * (1 - Math.pow(1 - t, 2));
       if (t >= 1) {
         phaseT.current = 0;
@@ -481,62 +484,78 @@ const CueStick = () => {
     }
 
     if (!groupRef.current || !cue) return;
+    // smooth elevation toward target for nice motion
+    const k = 1 - Math.exp(-dt * 14);
+    smoothElev.current += (elevation - smoothElev.current) * k;
+    const elev = smoothElev.current;
+
+    // Pivot at the contact point on the ball surface opposite the aim direction.
     const dx = Math.sin(aim);
     const dz = -Math.cos(aim);
-    const gap = cue.radius + pull.current;
-    groupRef.current.position.set(
-      cue.pos.x - dx * gap,
-      cue.pos.y,
-      cue.pos.z - dz * gap,
-    );
+    const r = cue.radius;
+    // contact point sits on the ball surface, slightly elevated up the back of the
+    // ball so the cue clears the cloth and "addresses" the ball above its center.
+    const contactX = cue.pos.x - dx * r * Math.cos(elev);
+    const contactY = cue.pos.y + r * Math.sin(elev);
+    const contactZ = cue.pos.z - dz * r * Math.cos(elev);
+
+    groupRef.current.position.set(contactX, contactY, contactZ);
     groupRef.current.rotation.set(0, -aim, 0);
+    if (pitchRef.current) {
+      // negative X-rotation lifts the +Z (butt) end upward
+      pitchRef.current.rotation.set(-elev, 0, 0);
+      // pull-back slides cue away from the ball along its own axis
+      pitchRef.current.position.set(0, 0, pull.current);
+    }
   });
 
   if (running || !cue || phase === "fired") return null;
 
   return (
     <group ref={groupRef}>
-      {/* tip (leather) */}
-      <mesh position={[0, 0, 0.004]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.0065, 0.0065, 0.008, 16]} />
-        <meshStandardMaterial color="#1f4f9e" roughness={0.55} />
-      </mesh>
-      {/* ferrule (white) */}
-      <mesh position={[0, 0, 0.018]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.0068, 0.0072, 0.018, 16]} />
-        <meshStandardMaterial color="#f4ead7" roughness={0.4} />
-      </mesh>
-      {/* shaft (maple) */}
-      <mesh position={[0, 0, 0.027 + 0.55 / 2]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.0072, 0.011, 0.55, 24]} />
-        <meshStandardMaterial color="#e3c089" roughness={0.45} metalness={0.05} />
-      </mesh>
-      {/* joint ring */}
-      <mesh position={[0, 0, 0.027 + 0.55]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.0112, 0.0112, 0.012, 24]} />
-        <meshStandardMaterial color="#d9d2c2" metalness={0.7} roughness={0.25} />
-      </mesh>
-      {/* butt (rosewood) */}
-      <mesh
-        position={[0, 0, 0.027 + 0.55 + 0.012 + (CUE_LENGTH - 0.55 - 0.027 - 0.012) / 2]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        castShadow
-      >
-        <cylinderGeometry
-          args={[0.011, 0.014, CUE_LENGTH - 0.55 - 0.027 - 0.012, 24]}
-        />
-        <meshStandardMaterial color="#2b1208" roughness={0.5} metalness={0.1} />
-      </mesh>
-      {/* wrap accent */}
-      <mesh position={[0, 0, 0.027 + 0.55 + 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.0125, 0.0125, 0.11, 24]} />
-        <meshStandardMaterial color="#0e0e10" roughness={0.85} />
-      </mesh>
-      {/* bumper */}
-      <mesh position={[0, 0, CUE_LENGTH + 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.014, 0.014, 0.014, 24]} />
-        <meshStandardMaterial color="#0a0a0a" roughness={1} />
-      </mesh>
+      <group ref={pitchRef}>
+        {/* tip (leather) */}
+        <mesh position={[0, 0, 0.004]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.0065, 0.0065, 0.008, 16]} />
+          <meshStandardMaterial color="#1f4f9e" roughness={0.55} />
+        </mesh>
+        {/* ferrule (white) */}
+        <mesh position={[0, 0, 0.018]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.0068, 0.0072, 0.018, 16]} />
+          <meshStandardMaterial color="#f4ead7" roughness={0.4} />
+        </mesh>
+        {/* shaft (maple) */}
+        <mesh position={[0, 0, 0.027 + 0.55 / 2]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.0072, 0.011, 0.55, 24]} />
+          <meshStandardMaterial color="#e3c089" roughness={0.45} metalness={0.05} />
+        </mesh>
+        {/* joint ring */}
+        <mesh position={[0, 0, 0.027 + 0.55]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.0112, 0.0112, 0.012, 24]} />
+          <meshStandardMaterial color="#d9d2c2" metalness={0.7} roughness={0.25} />
+        </mesh>
+        {/* butt (rosewood) */}
+        <mesh
+          position={[0, 0, 0.027 + 0.55 + 0.012 + (CUE_LENGTH - 0.55 - 0.027 - 0.012) / 2]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          castShadow
+        >
+          <cylinderGeometry
+            args={[0.011, 0.014, CUE_LENGTH - 0.55 - 0.027 - 0.012, 24]}
+          />
+          <meshStandardMaterial color="#2b1208" roughness={0.5} metalness={0.1} />
+        </mesh>
+        {/* wrap accent */}
+        <mesh position={[0, 0, 0.027 + 0.55 + 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.0125, 0.0125, 0.11, 24]} />
+          <meshStandardMaterial color="#0e0e10" roughness={0.85} />
+        </mesh>
+        {/* bumper */}
+        <mesh position={[0, 0, CUE_LENGTH + 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.014, 0.014, 0.014, 24]} />
+          <meshStandardMaterial color="#0a0a0a" roughness={1} />
+        </mesh>
+      </group>
     </group>
   );
 };
@@ -749,11 +768,14 @@ const AimingGuide = () => {
  * Active only when cue is visible (not running, idle phase).
  */
 const AIM_SENSITIVITY = 0.008; // radians per pixel of horizontal drag
+const ELEV_SENSITIVITY = 0.006; // radians per pixel of vertical drag (Shift)
 
 const AimPlane = () => {
   const cue = useSim((s) => s.balls[0]);
   const aim = useSim((s) => s.aimAngle);
   const setAim = useSim((s) => s.setAimAngle);
+  const elev = useSim((s) => s.cueElevation);
+  const setElev = useSim((s) => s.setCueElevation);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const world = useSim((s) => s.world);
@@ -761,7 +783,9 @@ const AimPlane = () => {
   const [dragging, setDragging] = useState(false);
   const dragDist = useRef(0);
   const aimRef = useRef(aim);
+  const elevRef = useRef(elev);
   aimRef.current = aim;
+  elevRef.current = elev;
   const { gl } = useThree();
 
   useEffect(() => {
@@ -792,11 +816,16 @@ const AimPlane = () => {
       onPointerMove={(e) => {
         if (!dragging) return;
         e.stopPropagation();
-        const mx = (e.nativeEvent as PointerEvent).movementX || 0;
-        const my = (e.nativeEvent as PointerEvent).movementY || 0;
+        const native = e.nativeEvent as PointerEvent;
+        const mx = native.movementX || 0;
+        const my = native.movementY || 0;
         dragDist.current += Math.abs(mx) + Math.abs(my);
-        if (!mx) return;
-        setAim(normalize(aimRef.current + mx * AIM_SENSITIVITY));
+        // Shift + vertical drag = elevation; otherwise horizontal drag = aim
+        if (native.shiftKey) {
+          if (my) setElev(elevRef.current - my * ELEV_SENSITIVITY);
+        } else {
+          if (mx) setAim(normalize(aimRef.current + mx * AIM_SENSITIVITY));
+        }
       }}
       onPointerUp={(e) => {
         (e.target as Element)?.releasePointerCapture?.(e.pointerId);
@@ -817,6 +846,8 @@ const AimPlane = () => {
 /* -------------------------------------------------------------------------- */
 export const AimHUD = () => {
   const aim = useSim((s) => s.aimAngle);
+  const elev = useSim((s) => s.cueElevation);
+  const setElev = useSim((s) => s.setCueElevation);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const force = useSim((s) => s.controls.impactForce);
@@ -824,16 +855,50 @@ export const AimHUD = () => {
   const blocked = running || phase !== "idle";
   let deg = (aim * 180) / Math.PI;
   deg = ((deg % 360) + 360) % 360;
+  const elevDeg = (elev * 180) / Math.PI;
   const FMIN = 5;
   const FMAX = 200;
   const pct = Math.round(((force - FMIN) / (FMAX - FMIN)) * 100);
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col gap-2">
       <div className="rounded-md border border-cyan-400/30 bg-slate-900/80 px-3 py-2 font-mono text-[11px] text-cyan-300 shadow-lg backdrop-blur">
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <div>
             <div className="text-[9px] uppercase tracking-widest text-cyan-400/70">Aim</div>
             <div className="mt-0.5 text-sm font-semibold tabular-nums">{deg.toFixed(1)}°</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-emerald-300/80">Elevation</div>
+            <div className="mt-0.5 text-sm font-semibold tabular-nums text-emerald-200">
+              {elevDeg.toFixed(1)}°
+            </div>
+            <div className="pointer-events-auto mt-1 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setElev(elev - (Math.PI / 180) * 2)}
+                className="rounded border border-emerald-400/40 bg-emerald-950/50 px-1.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
+                title="Lower butt (−2°)"
+              >
+                −
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={80}
+                step={1}
+                value={Math.round(elevDeg)}
+                onChange={(e) => setElev((parseFloat(e.target.value) * Math.PI) / 180)}
+                className="h-1 w-20 cursor-pointer accent-emerald-400"
+              />
+              <button
+                type="button"
+                onClick={() => setElev(elev + (Math.PI / 180) * 2)}
+                className="rounded border border-emerald-400/40 bg-emerald-950/50 px-1.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
+                title="Raise butt (+2°)"
+              >
+                +
+              </button>
+            </div>
           </div>
           <div>
             <div className="text-[9px] uppercase tracking-widest text-amber-300/80">Power</div>
@@ -851,7 +916,7 @@ export const AimHUD = () => {
         <div className="mt-1.5 text-[9px] leading-tight text-slate-400">
           {blocked
             ? "Balls in motion — wait for rest"
-            : "Drag = aim · Wheel = power · Click = shoot"}
+            : "Drag = aim · Shift+drag = elevation · Wheel = power · Click = shoot"}
         </div>
       </div>
       <button
