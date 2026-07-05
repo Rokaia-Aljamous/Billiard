@@ -22,10 +22,14 @@ export interface Ball {
   pos: Vec3;
   vel: Vec3;
   acc: Vec3;
-  omega: Vec3; // angular velocity (rad/s)
-  mass: number; // kg
-  radius: number; // m
+  omega: Vec3;
+  mass: number;
+  radius: number;
   airborne: boolean;
+  pocketed: boolean;
+  slipDistance: number;
+  rollTime: number;
+  startedRolling: boolean;
 }
 
 export const momentOfInertia = (b: Ball): number => (2 / 5) * b.mass * b.radius * b.radius;
@@ -35,3 +39,19 @@ export const rotationalEnergy = (b: Ball): number =>
   0.5 * momentOfInertia(b) * vdot(b.omega, b.omega);
 export const momentum = (b: Ball): Vec3 => vscale(b.vel, b.mass);
 export const angularMomentum = (b: Ball): Vec3 => vscale(b.omega, momentOfInertia(b));
+
+export const angleBetween = (a: Vec3, b: Vec3): number => {
+  const da = vlen(a);
+  const db = vlen(b);
+  if (da < 1e-9 || db < 1e-9) return 0;
+  const c = vdot(a, b) / (da * db);
+  return Math.acos(Math.max(-1, Math.min(1, c)));
+};
+
+export type PocketId = "tl" | "tr" | "bl" | "br" | "tm" | "bm";
+
+export interface PocketDef {
+  id: PocketId;
+  pos: Vec3;
+  radius: number;
+}

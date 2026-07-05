@@ -1,11 +1,8 @@
-import { Canvas, useFrame, useThree, ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
-  Environment,
   Line,
-  ContactShadows,
   Html,
-  SoftShadows,
   Grid,
 } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -153,16 +150,6 @@ const Table = () => {
           emissiveIntensity={0.15}
         />
       </mesh>
-      {/* Head string line */}
-      <mesh position={[0, 0.0008, hl * 0.5]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[hw * 2 - 0.02, 0.002]} />
-        <meshBasicMaterial color="#e8d99a" transparent opacity={0.35} />
-      </mesh>
-      {/* Foot spot */}
-      <mesh position={[0, 0.0009, -hl * 0.5]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.006, 16]} />
-        <meshBasicMaterial color="#e8d99a" />
-      </mesh>
 
       {/* Cushions (slightly inset so they meet the cloth edges) */}
       {[
@@ -241,23 +228,25 @@ const BallMesh = ({ ball }: { ball: Ball }) => {
           <sphereGeometry args={[ball.radius, 48, 48]} />
           <meshPhysicalMaterial
             color={ball.color}
-            roughness={0.12}
-            metalness={0.05}
-            clearcoat={1}
-            clearcoatRoughness={0.05}
-            reflectivity={0.6}
+            roughness={ball.pocketed ? 0.8 : 0.12}
+            metalness={ball.pocketed ? 0 : 0.05}
+            clearcoat={ball.pocketed ? 0 : 1}
+            transparent={ball.pocketed}
+            opacity={ball.pocketed ? 0.35 : 1}
           />
         </mesh>
-        {/* Spin band — equator, helps eye track rotation */}
-        <mesh>
-          <torusGeometry args={[ball.radius * 0.99, ball.radius * 0.06, 10, 48]} />
-          <meshStandardMaterial color="#0b0b0b" roughness={0.4} />
-        </mesh>
-        {/* Pole dot */}
-        <mesh position={[0, ball.radius * 0.96, 0]}>
-          <sphereGeometry args={[ball.radius * 0.16, 16, 16]} />
-          <meshStandardMaterial color="#101010" />
-        </mesh>
+        {!ball.pocketed && (
+          <>
+            <mesh>
+              <torusGeometry args={[ball.radius * 0.99, ball.radius * 0.06, 10, 48]} />
+              <meshStandardMaterial color="#0b0b0b" roughness={0.4} />
+            </mesh>
+            <mesh position={[0, ball.radius * 0.96, 0]}>
+              <sphereGeometry args={[ball.radius * 0.16, 16, 16]} />
+              <meshStandardMaterial color="#101010" />
+            </mesh>
+          </>
+        )}
       </group>
     </group>
   );
@@ -271,7 +260,7 @@ const Trail = () => {
   const show = useSim((s) => s.showTrail);
   if (!show || trail.length < 2) return null;
   const pts = trail.map((p) => new THREE.Vector3(p.x, p.y + 0.001, p.z));
-  return <Line points={pts} color="#ffd84d" lineWidth={1.6} transparent opacity={0.85} />;
+  return <Line points={pts} color="#4fc3f7" lineWidth={1.6} transparent opacity={0.85} />;
 };
 
 const Predicted = () => {
@@ -1000,8 +989,16 @@ const CameraRig = ({ controls }: { controls: React.MutableRefObject<any> }) => {
 /*  Scene                                                                      */
 /* -------------------------------------------------------------------------- */
 export const Scene3D = () => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const balls = useSim((s) => s.balls);
   const controlsRef = useRef<any>(null);
+
+  if (!mounted) {
+    return <div className="h-full w-full" />;
+  }
+
   return (
     <Canvas
       shadows
@@ -1036,22 +1033,10 @@ export const Scene3D = () => {
         color="#ffe9c2"
         castShadow={false}
       />
-      <SoftShadows size={20} samples={16} focus={0.7} />
-      <Environment preset="studio" />
-
       <Table />
       {balls.map((b) => (
         <BallMesh key={b.id} ball={b} />
       ))}
-
-      <ContactShadows
-        position={[0, 0.0009, 0]}
-        opacity={0.55}
-        scale={4}
-        blur={2.4}
-        far={1}
-        resolution={1024}
-      />
 
       <Trail />
       <Predicted />

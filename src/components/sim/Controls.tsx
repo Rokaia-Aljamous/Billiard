@@ -175,7 +175,8 @@ export const Controls = () => {
               <SelectItem value="top">Top Spin</SelectItem>
               <SelectItem value="back">Back Spin (Draw)</SelectItem>
               <SelectItem value="side">Side Spin (English)</SelectItem>
-              <SelectItem value="masse">Massé / Swerve</SelectItem>
+              <SelectItem value="masse">Massé</SelectItem>
+              <SelectItem value="swerve">Swerve (curve)</SelectItem>
             </SelectContent>
           </Select>
         </div>

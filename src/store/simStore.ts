@@ -2,23 +2,27 @@ import { create } from "zustand";
 import {
   Ball,
   Vec3,
+  PocketId,
   angularMomentum,
   kineticEnergy,
   momentum,
   rotationalEnergy,
   v,
   vlen,
+  angleBetween,
 } from "@/physics/types";
 import {
   BallForces,
   World,
   applyCue,
   defaultWorld,
+  detectPocketing,
   resolveCollision,
   stepBall,
+  collisionAngle,
 } from "@/physics/engine";
 
-export type Mode = "single" | "rotation" | "collision" | "cushion" | "jump";
+export type GameMode = "single" | "rotation" | "collision" | "cushion" | "jump" | "8ball" | "9ball" | "snooker" | "carom";
 
 export type CameraMode = "orbit" | "top" | "side" | "follow" | "analysis";
 
@@ -41,6 +45,14 @@ export interface CollisionEvent {
   magnitude: number;
   normal: Vec3;
   bornAt: number;
+  angleDeg: number;
+}
+
+export interface PocketEvent {
+  id: number;
+  ballId: number;
+  pocketId: PocketId;
+  time: number;
 }
 
 export interface SamplePoint {
@@ -50,6 +62,10 @@ export interface SamplePoint {
   momentum: number;
   omega: number;
   energy: number;
+  totalEnergy: number;
+  energyLost: number;
+  totalMomentum: number;
+  totalAngularMomentum: number;
 }
 
 interface ControlsState {
@@ -59,14 +75,24 @@ interface ControlsState {
   muRolling: number;
   restitution: number;
   initialSpeed: number;
-  initialOmega: number; // side/top spin magnitude
-  spinType: "top" | "back" | "side" | "masse" | "none";
+  initialOmega: number;
+  spinType: "top" | "back" | "side" | "masse" | "swerve" | "none";
   impactForce: number;
   impactAngle: number;
 }
 
+export interface SystemStats {
+  totalEnergy: number;
+  totalMomentum: number;
+  totalAngularMomentum: number;
+  initialTotalEnergy: number;
+  energyLost: number;
+  activeBalls: number;
+  pocketedCount: number;
+}
+
 interface SimState {
-  mode: Mode;
+  mode: GameMode;
   world: World;
   balls: Ball[];
   forces: Record<number, BallForces>;
@@ -78,15 +104,17 @@ interface SimState {
   trail: Vec3[];
   predicted: Vec3[];
   collisions: CollisionEvent[];
+  pocketEvents: PocketEvent[];
   cameraMode: CameraMode;
   showTrail: boolean;
   showPredicted: boolean;
   showLabels: boolean;
-  aimAngle: number; // radians; 0 = -Z, matches applyCue convention
-  cueElevation: number; // radians, 0 = horizontal, positive = butt raised
+  aimAngle: number;
+  cueElevation: number;
   shotPhase: ShotPhase;
-  // actions
-  setMode: (m: Mode) => void;
+  systemStats: SystemStats;
+  initialTotalEnergy: number;
+  setMode: (m: GameMode) => void;
   setRunning: (b: boolean) => void;
   reset: () => void;
   step: (dt: number) => void;
@@ -126,31 +154,31 @@ const mkBall = (id: number, color: string, c: ControlsState, pos: Vec3): Ball =>
   mass: c.mass,
   radius: c.radius,
   airborne: false,
+  pocketed: false,
+  slipDistance: 0,
+  rollTime: 0,
+  startedRolling: false,
 });
 
-// Standard 8-ball colors (1-7 solids, 8 black, 9-15 stripes shown as lighter shades)
 const BALL_COLORS: Record<number, string> = {
-  1: "#f4c20d",  // yellow solid
-  2: "#1d4ed8",  // blue solid
-  3: "#dc2626",  // red solid
-  4: "#6d28d9",  // purple solid
-  5: "#ea580c",  // orange solid
-  6: "#15803d",  // green solid
-  7: "#7f1d1d",  // maroon solid
-  8: "#0a0a0a",  // black
-  9: "#fde047",  // yellow stripe
-  10: "#60a5fa", // blue stripe
-  11: "#f87171", // red stripe
-  12: "#a78bfa", // purple stripe
-  13: "#fb923c", // orange stripe
-  14: "#4ade80", // green stripe
-  15: "#b91c1c", // maroon stripe
+  1: "#f4c20d",
+  2: "#1d4ed8",
+  3: "#dc2626",
+  4: "#6d28d9",
+  5: "#ea580c",
+  6: "#15803d",
+  7: "#7f1d1d",
+  8: "#0a0a0a",
+  9: "#fde047",
+  10: "#60a5fa",
+  11: "#f87171",
+  12: "#a78bfa",
+  13: "#fb923c",
+  14: "#4ade80",
+  15: "#b91c1c",
 };
 
-// Build a standard 8-ball rack. Apex points toward cue ball (positive Z).
-// 8-ball in the middle of row 3; back-row corners are one solid, one stripe.
-const buildRack = (c: ControlsState, apexZ: number): Ball[] => {
-  // Layout numbers row-by-row. Row 1 = apex (closest to cue).
+const build8BallRack = (c: ControlsState, apexZ: number): Ball[] => {
   const layout: number[][] = [
     [1],
     [9, 2],
@@ -174,15 +202,61 @@ const buildRack = (c: ControlsState, apexZ: number): Ball[] => {
   return balls;
 };
 
-const setupBalls = (mode: Mode, c: ControlsState): Ball[] => {
+const build9BallRack = (c: ControlsState, apexZ: number): Ball[] => {
+  const layout: number[][] = [
+    [1],
+    [2, 9],
+    [3, 5, 7],
+    [4, 8, 6],
+  ];
+  const r = c.radius;
+  const dx = 2 * r;
+  const dz = r * Math.sqrt(3);
+  const balls: Ball[] = [mkBall(0, "#ffffff", c, v(0, 0, 0.8))];
+  for (let row = 0; row < layout.length; row++) {
+    const count = layout[row].length;
+    const z = apexZ - row * dz;
+    const xStart = -((count - 1) / 2) * dx;
+    for (let i = 0; i < count; i++) {
+      const num = layout[row][i];
+      balls.push(mkBall(num, BALL_COLORS[num], c, v(xStart + i * dx, 0, z)));
+    }
+  }
+  return balls;
+};
+
+const buildSnookerRack = (c: ControlsState, apexZ: number): Ball[] => {
+  const r = c.radius;
+  const dx = 2 * r;
+  const dz = r * Math.sqrt(3);
+  const colors: string[] = ["#dc2626", "#f4c20d", "#15803d", "#6d28d9", "#ea580c", "#1d4ed8", "#7f1d1d", "#0a0a0a", "#fde047", "#60a5fa", "#f87171", "#a78bfa", "#fb923c", "#4ade80", "#b91c1c"];
+  const balls: Ball[] = [mkBall(0, "#ffffff", c, v(0, 0, 0.8))];
+  for (let row = 0; row < 5; row++) {
+    const count = row + 1;
+    const z = apexZ - row * dz;
+    const xStart = -((count - 1) / 2) * dx;
+    for (let i = 0; i < count; i++) {
+      const idx = row * (row + 1) / 2 + i;
+      balls.push(mkBall(idx + 1, colors[idx % colors.length], c, v(xStart + i * dx, 0, z)));
+    }
+  }
+  return balls;
+};
+
+const buildCaromSetup = (c: ControlsState): Ball[] => [
+  mkBall(0, "#ffffff", c, v(0, 0, 0.5)),
+  mkBall(1, "#dc2626", c, v(-0.15, 0, -0.5)),
+  mkBall(2, "#f4c20d", c, v(0.15, 0, -0.5)),
+];
+
+const setupBalls = (mode: GameMode, c: ControlsState): Ball[] => {
   switch (mode) {
     case "single":
       return [mkBall(0, "#ffffff", c, v(0, 0, 0.8))];
     case "rotation":
       return [mkBall(0, "#ffd84d", c, v(0, 0, 0))];
     case "collision":
-      // Full standard 8-ball rack at foot spot.
-      return buildRack(c, -0.5);
+      return build8BallRack(c, -0.5);
     case "cushion":
       return [mkBall(0, "#ffffff", c, v(-0.4, 0, 0.8))];
     case "jump":
@@ -190,7 +264,38 @@ const setupBalls = (mode: Mode, c: ControlsState): Ball[] => {
         mkBall(0, "#ffffff", c, v(0, 0, 0.8)),
         mkBall(1, "#1e88e5", c, v(0, 0, 0.0)),
       ];
+    case "8ball":
+      return build8BallRack(c, -0.5);
+    case "9ball":
+      return build9BallRack(c, -0.5);
+    case "snooker":
+      return buildSnookerRack(c, -0.5);
+    case "carom":
+      return buildCaromSetup(c);
   }
+};
+
+const computeSystemStats = (balls: Ball[], initialTotalEnergy: number): SystemStats => {
+  let totalE = 0;
+  let totalP = 0;
+  let totalL = 0;
+  let activeCount = 0;
+  for (const b of balls) {
+    if (b.pocketed) continue;
+    activeCount++;
+    totalE += kineticEnergy(b) + rotationalEnergy(b);
+    totalP += vlen(momentum(b));
+    totalL += vlen(angularMomentum(b));
+  }
+  return {
+    totalEnergy: totalE,
+    totalMomentum: totalP,
+    totalAngularMomentum: totalL,
+    initialTotalEnergy,
+    energyLost: Math.max(0, initialTotalEnergy - totalE),
+    activeBalls: activeCount,
+    pocketedCount: balls.length - activeCount,
+  };
 };
 
 export const useSim = create<SimState>((set, get) => ({
@@ -215,42 +320,55 @@ export const useSim = create<SimState>((set, get) => ({
   trail: [],
   predicted: [],
   collisions: [],
+  pocketEvents: [],
   cameraMode: "orbit",
   showTrail: true,
   showPredicted: true,
   showLabels: true,
   aimAngle: 0,
-  cueElevation: 0.09, // ~5° default lift
+  cueElevation: 0.09,
   shotPhase: "idle",
+  systemStats: { totalEnergy: 0, totalMomentum: 0, totalAngularMomentum: 0, initialTotalEnergy: 0, energyLost: 0, activeBalls: 0, pocketedCount: 0 },
+  initialTotalEnergy: 0,
 
   setMode: (m) => {
     const c = get().controls;
+    const b = setupBalls(m, c);
+    const initE = b.reduce((sum, ball) => sum + kineticEnergy(ball) + rotationalEnergy(ball), 0);
     set({
       mode: m,
-      balls: setupBalls(m, c),
+      balls: b,
       time: 0,
       samples: [],
       trail: [],
       predicted: [],
       collisions: [],
+      pocketEvents: [],
       forces: {},
       running: false,
       shotPhase: "idle",
+      systemStats: computeSystemStats(b, initE),
+      initialTotalEnergy: initE,
     });
   },
   setRunning: (b) => set({ running: b }),
   reset: () => {
     const { mode, controls } = get();
+    const balls = setupBalls(mode, controls);
+    const initE = balls.reduce((sum, ball) => sum + kineticEnergy(ball) + rotationalEnergy(ball), 0);
     set({
-      balls: setupBalls(mode, controls),
+      balls,
       time: 0,
       samples: [],
       trail: [],
       predicted: [],
       collisions: [],
+      pocketEvents: [],
       forces: {},
       running: false,
       shotPhase: "idle",
+      systemStats: computeSystemStats(balls, initE),
+      initialTotalEnergy: initE,
     });
   },
   setToggle: (k, val) => set((s) => ({ toggles: { ...s.toggles, [k]: val } })),
@@ -286,7 +404,7 @@ export const useSim = create<SimState>((set, get) => ({
   },
 
   commitShot: () => {
-    const { balls, controls, mode, aimAngle } = get();
+    const { balls, controls, mode, aimAngle, cueElevation } = get();
     if (!balls.length) return;
     const cue = balls[0];
     let offRight = 0;
@@ -306,33 +424,43 @@ export const useSim = create<SimState>((set, get) => ({
         offUp = -r;
         offRight = r * 0.6;
         break;
+      case "swerve":
+        offRight = r * 0.3;
+        break;
     }
     if (mode === "jump") {
       offUp = -r;
     }
     const angleDeg = (aimAngle * 180) / Math.PI;
-    applyCue(cue, controls.impactForce, angleDeg, offRight, offUp);
-    set({ running: true, shotPhase: "fired" });
+    applyCue(cue, controls.impactForce, angleDeg, offRight, offUp, cueElevation);
+
+    const initE = get().balls.reduce((sum, ball) => sum + kineticEnergy(ball) + rotationalEnergy(ball), 0);
+    set({ running: true, shotPhase: "fired", initialTotalEnergy: initE });
   },
 
-
   step: (dt) => {
-    const { balls, world, time, samples, trail, collisions } = get();
+    const { balls, world, time, samples, trail, collisions, pocketEvents, initialTotalEnergy } = get();
     const forces: Record<number, BallForces> = {};
+
     for (const b of balls) {
+      if (b.pocketed) continue;
       forces[b.id] = stepBall(b, world, dt);
     }
-    // collisions — snapshot pre-vel to derive impulse magnitude after physics resolves
+
     const preVel = balls.map((b) => ({ ...b.vel }));
     const newColl: CollisionEvent[] = [];
+
     for (let i = 0; i < balls.length; i++) {
       for (let j = i + 1; j < balls.length; j++) {
         const a = balls[i];
         const b = balls[j];
+        if (a.pocketed || b.pocketed) continue;
+        const preA = preVel[i];
+        const preB = preVel[j];
         if (resolveCollision(a, b, world.restitution)) {
-          const dvx = a.vel.x - preVel[i].x;
-          const dvy = a.vel.y - preVel[i].y;
-          const dvz = a.vel.z - preVel[i].z;
+          const dvx = a.vel.x - preA.x;
+          const dvy = a.vel.y - preA.y;
+          const dvz = a.vel.z - preA.z;
           const mag = a.mass * Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
           const cx = (a.pos.x + b.pos.x) / 2;
           const cy = (a.pos.y + b.pos.y) / 2;
@@ -346,17 +474,38 @@ export const useSim = create<SimState>((set, get) => ({
             magnitude: mag,
             normal: { x: nx / nl, y: 0, z: nz / nl },
             bornAt: time + dt,
+            angleDeg: (collisionAngle(a, b, preA, preB) * 180) / Math.PI,
           });
         }
       }
     }
-    const target = balls[0];
+
+    const newPocketEvents: PocketEvent[] = [];
+    for (const b of balls) {
+      if (b.pocketed) continue;
+      const pocket = detectPocketing(b, world.pockets);
+      if (pocket) {
+        b.pocketed = true;
+        newPocketEvents.push({
+          id: Date.now() + Math.random(),
+          ballId: b.id,
+          pocketId: pocket.id,
+          time: time + dt,
+        });
+      }
+    }
+
+    const activeBalls = balls.filter((b) => !b.pocketed);
+    const target = activeBalls[0] || balls[0];
     const speed = vlen(target.vel);
     const accel = vlen(target.acc);
     const p = vlen(momentum(target));
     const om = vlen(target.omega);
     const E = kineticEnergy(target) + rotationalEnergy(target);
     const newTime = time + dt;
+
+    const stats = computeSystemStats(balls, initialTotalEnergy);
+
     const sample: SamplePoint = {
       t: +newTime.toFixed(3),
       speed: +speed.toFixed(4),
@@ -364,6 +513,10 @@ export const useSim = create<SimState>((set, get) => ({
       momentum: +p.toFixed(4),
       omega: +om.toFixed(4),
       energy: +E.toFixed(4),
+      totalEnergy: +stats.totalEnergy.toFixed(4),
+      energyLost: +stats.energyLost.toFixed(4),
+      totalMomentum: +stats.totalMomentum.toFixed(4),
+      totalAngularMomentum: +stats.totalAngularMomentum.toFixed(4),
     };
     const newSamples = samples.length > 600 ? [...samples.slice(-599), sample] : [...samples, sample];
     const newTrail =
@@ -371,7 +524,6 @@ export const useSim = create<SimState>((set, get) => ({
         ? [...trail.slice(-399), { ...target.pos }]
         : [...trail, { ...target.pos }];
 
-    // Predicted trajectory: simple forward extrapolation under rolling deceleration + cushion reflection.
     const predicted: Vec3[] = [];
     if (!target.airborne && speed > 0.05) {
       const decel = world.muRolling * world.gravity + 0.001;
@@ -392,7 +544,6 @@ export const useSim = create<SimState>((set, get) => ({
         vz += az * stepT;
         px += vx * stepT;
         pz += vz * stepT;
-        // cushion reflect
         if (px - target.radius < -world.tableHalfWidth) {
           px = -world.tableHalfWidth + target.radius;
           vx = -vx * world.cushionRestitution;
@@ -411,12 +562,12 @@ export const useSim = create<SimState>((set, get) => ({
       }
     }
 
-    // age collision flashes (keep 1.2s)
     const keptColl = [...collisions, ...newColl].filter((c) => newTime - c.bornAt < 1.2);
+    const allPocketEvents = [...pocketEvents, ...newPocketEvents];
 
-    // Auto-stop when all balls are essentially at rest
     let maxSpeed = 0;
     for (const b of balls) {
+      if (b.pocketed) continue;
       const s = vlen(b.vel);
       if (s > maxSpeed) maxSpeed = s;
     }
@@ -430,6 +581,8 @@ export const useSim = create<SimState>((set, get) => ({
       trail: newTrail,
       predicted,
       collisions: keptColl,
+      pocketEvents: allPocketEvents,
+      systemStats: stats,
     };
     if (stateRunning && maxSpeed < 0.015 && stateShotPhase !== "pullback" && stateShotPhase !== "impact") {
       patch.running = false;

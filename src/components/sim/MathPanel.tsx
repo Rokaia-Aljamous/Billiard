@@ -17,42 +17,80 @@ export const MathPanel = () => {
   const ball = useSim((s) => s.balls[0]);
   const forces = useSim((s) => s.forces[ball?.id ?? -1]);
   const time = useSim((s) => s.time);
+  const stats = useSim((s) => s.systemStats);
+  const collisions = useSim((s) => s.collisions);
+  const pocketEvents = useSim((s) => s.pocketEvents);
+  const balls = useSim((s) => s.balls);
+
   if (!ball) return null;
-  const stats = computeStats(ball);
-  const totalE = stats.ke + stats.re;
+
+  const lastCollision = collisions.length > 0 ? collisions[collisions.length - 1] : null;
+  const lastPocket = pocketEvents.length > 0 ? pocketEvents[pocketEvents.length - 1] : null;
+
+  const bStats = ball && !ball.pocketed ? computeStats(ball) : null;
+
+  // Find first active ball for slip/roll info
+  const activeB = balls.find((b) => !b.pocketed);
+
   return (
     <div className="space-y-1 rounded-lg border border-border/50 bg-card/50 p-4 backdrop-blur">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
         Live Measurements — Ball #{ball.id}
       </h3>
       <Row label="t" value={fmt(time)} unit="s" />
-      <Row
-        label="Position (x,y,z)"
-        value={`${fmt(ball.pos.x)}, ${fmt(ball.pos.y)}, ${fmt(ball.pos.z)}`}
-        unit="m"
-      />
-      <Row
-        label="Velocity"
-        value={`${fmt(ball.vel.x)}, ${fmt(ball.vel.y)}, ${fmt(ball.vel.z)}`}
-        unit="m/s"
-      />
-      <Row label="|v|" value={fmt(vlen(ball.vel))} unit="m/s" />
-      <Row
-        label="Acceleration"
-        value={`${fmt(ball.acc.x)}, ${fmt(ball.acc.y)}, ${fmt(ball.acc.z)}`}
-        unit="m/s²"
-      />
-      <Row
-        label="Angular ω"
-        value={`${fmt(ball.omega.x)}, ${fmt(ball.omega.y)}, ${fmt(ball.omega.z)}`}
-        unit="rad/s"
-      />
-      <Row label="|p| momentum" value={fmt(vlen(stats.p))} unit="kg·m/s" />
-      <Row label="|L| ang. momentum" value={fmt(vlen(stats.L), 5)} unit="kg·m²/s" />
-      <Row label="Eₖ translational" value={fmt(stats.ke, 4)} unit="J" />
-      <Row label="Eᵣ rotational" value={fmt(stats.re, 4)} unit="J" />
-      <Row label="E total" value={fmt(totalE, 4)} unit="J" />
-      {forces && (
+      {!ball.pocketed && bStats && (
+        <>
+          <Row
+            label="Position (x,y,z)"
+            value={`${fmt(ball.pos.x)}, ${fmt(ball.pos.y)}, ${fmt(ball.pos.z)}`}
+            unit="m"
+          />
+          <Row
+            label="Velocity"
+            value={`${fmt(ball.vel.x)}, ${fmt(ball.vel.y)}, ${fmt(ball.vel.z)}`}
+            unit="m/s"
+          />
+          <Row label="|v|" value={fmt(vlen(ball.vel))} unit="m/s" />
+          <Row
+            label="Angular ω"
+            value={`${fmt(ball.omega.x)}, ${fmt(ball.omega.y)}, ${fmt(ball.omega.z)}`}
+            unit="rad/s"
+          />
+          <Row label="|p| momentum" value={fmt(vlen(bStats.p))} unit="kg·m/s" />
+          <Row label="|L| ang. momentum" value={fmt(vlen(bStats.L), 5)} unit="kg·m²/s" />
+          <Row label="Eₖ translational" value={fmt(bStats.ke, 4)} unit="J" />
+          <Row label="Eᵣ rotational" value={fmt(bStats.re, 4)} unit="J" />
+        </>
+      )}
+      {ball.pocketed && (
+        <Row label="Status" value="POCKETED" />
+      )}
+
+      <div className="mt-3 border-t border-border/40 pt-2">
+        <h4 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+          System Analysis
+        </h4>
+        <Row label="Active balls" value={String(stats.activeBalls)} />
+        <Row label="Pocketed" value={String(stats.pocketedCount)} />
+        <Row label="E total system" value={fmt(stats.totalEnergy, 4)} unit="J" />
+        <Row label="E lost (friction)" value={fmt(stats.energyLost, 4)} unit="J" />
+        <Row label="Total |p|" value={fmt(stats.totalMomentum, 4)} unit="kg·m/s" />
+        <Row label="Total |L|" value={fmt(stats.totalAngularMomentum, 5)} unit="kg·m²/s" />
+        {activeB && (
+          <>
+            <Row label="Slip distance" value={fmt(activeB.slipDistance, 4)} unit="m" />
+            <Row label="Roll time" value={fmt(activeB.rollTime, 3)} unit="s" />
+          </>
+        )}
+        {lastCollision && (
+          <Row label="Last collision ∠" value={`${fmt(lastCollision.angleDeg, 1)}°`} />
+        )}
+        {lastPocket && (
+          <Row label="Last pocket" value={`#${lastPocket.ballId} @ ${lastPocket.pocketId}`} />
+        )}
+      </div>
+
+      {forces && ball && !ball.pocketed && (
         <>
           <div className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Forces (N)
