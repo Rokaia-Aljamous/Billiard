@@ -21,6 +21,7 @@ import {
   stepBall,
   collisionAngle,
 } from "@/physics/engine";
+import { playCollisionSound, playCushionSound } from "@/lib/audio";
 
 export type GameMode = "single" | "rotation" | "collision" | "cushion" | "jump" | "8ball" | "9ball" | "snooker" | "carom";
 
@@ -229,17 +230,30 @@ const buildSnookerRack = (c: ControlsState, apexZ: number): Ball[] => {
   const r = c.radius;
   const dx = 2 * r;
   const dz = r * Math.sqrt(3);
-  const colors: string[] = ["#dc2626", "#f4c20d", "#15803d", "#6d28d9", "#ea580c", "#1d4ed8", "#7f1d1d", "#0a0a0a", "#fde047", "#60a5fa", "#f87171", "#a78bfa", "#fb923c", "#4ade80", "#b91c1c"];
-  const balls: Ball[] = [mkBall(0, "#ffffff", c, v(0, 0, 0.8))];
+  const gap = 0.02;
+  const balls: Ball[] = [];
+  // Cue ball behind baulk line
+  balls.push(mkBall(0, "#ffffff", c, v(0, 0, 0.8)));
+  // Baulk-line colors (on the "D")
+  balls.push(mkBall(2, "#f4c20d", c, v(0.2, 0, 0.6)));   // yellow — right of baulk
+  balls.push(mkBall(3, "#15803d", c, v(-0.2, 0, 0.6)));  // green — left of baulk
+  balls.push(mkBall(4, "#6d28d9", c, v(0, 0, 0.6)));      // brown — center baulk
+  // Center spot
+  balls.push(mkBall(5, "#1d4ed8", c, v(0, 0, 0)));        // blue
+  // Pyramid spot — pink at apex of the triangle
+  balls.push(mkBall(6, "#ea580c", c, v(0, 0, apexZ)));    // pink
+  // 15 red balls in a triangle, first row touching the pink
   for (let row = 0; row < 5; row++) {
     const count = row + 1;
-    const z = apexZ - row * dz;
+    const z = apexZ - 2 * r - row * dz;
     const xStart = -((count - 1) / 2) * dx;
     for (let i = 0; i < count; i++) {
-      const idx = row * (row + 1) / 2 + i;
-      balls.push(mkBall(idx + 1, colors[idx % colors.length], c, v(xStart + i * dx, 0, z)));
+      balls.push(mkBall(1, "#dc2626", c, v(xStart + i * dx, 0, z)));
     }
   }
+  // Black behind the reds at a gap of one ball radius
+  const lastRowZ = apexZ - 2 * r - 4 * dz;
+  balls.push(mkBall(7, "#0a0a0a", c, v(0, 0, lastRowZ - 2 * r - gap)));
   return balls;
 };
 
@@ -442,9 +456,21 @@ export const useSim = create<SimState>((set, get) => ({
     const { balls, world, time, samples, trail, collisions, pocketEvents, initialTotalEnergy } = get();
     const forces: Record<number, BallForces> = {};
 
+    const preStepVel = balls.map((b) => ({ ...b.vel }));
     for (const b of balls) {
       if (b.pocketed) continue;
       forces[b.id] = stepBall(b, world, dt);
+    }
+
+    for (let i = 0; i < balls.length; i++) {
+      const b = balls[i];
+      if (b.pocketed) continue;
+      const pre = preStepVel[i];
+      const vxFlip = Math.sign(pre.x) !== 0 && Math.sign(b.vel.x) !== Math.sign(pre.x);
+      const vzFlip = Math.sign(pre.z) !== 0 && Math.sign(b.vel.z) !== Math.sign(pre.z);
+      if ((vxFlip || vzFlip) && vlen(pre) > 0.05) {
+        playCushionSound(vlen(pre));
+      }
     }
 
     const preVel = balls.map((b) => ({ ...b.vel }));
@@ -476,6 +502,7 @@ export const useSim = create<SimState>((set, get) => ({
             bornAt: time + dt,
             angleDeg: (collisionAngle(a, b, preA, preB) * 180) / Math.PI,
           });
+          playCollisionSound(mag);
         }
       }
     }
