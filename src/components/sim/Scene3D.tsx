@@ -7,8 +7,8 @@ import {
 } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { useSim, CameraMode, CollisionEvent } from "@/store/simStore";
-import { Ball, Vec3, vlen, vnorm, vscale } from "@/physics/types";
+import { useSim, CameraMode, CollisionEvent, CushionBounceEvent } from "@/store/simStore";
+import { Ball, Vec3, vlen, vnorm, vscale, vdot } from "@/physics/types";
 
 /* -------------------------------------------------------------------------- */
 /*  Force / vector arrow with magnitude label                                  */
@@ -321,6 +321,89 @@ const Collisions = () => {
     <>
       {evs.map((e) => (
         <CollisionFlash key={e.id} ev={e} />
+      ))}
+    </>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Cushion bounce indicator — incoming / outgoing arrows + angle arc           */
+/* -------------------------------------------------------------------------- */
+const CushionBounceItem = ({ ev }: { ev: CushionBounceEvent }) => {
+  const time = useSim((s) => s.time);
+  const age = time - ev.bornAt;
+  const opacity = Math.max(0, 1 - age / 2);
+  const arrowLen = 0.08;
+  const arcR = 0.045;
+
+  const inEnd = new THREE.Vector3(ev.pos.x, ev.pos.y, ev.pos.z);
+  const inStart = new THREE.Vector3(
+    ev.pos.x - ev.preDir.x * arrowLen,
+    ev.pos.y,
+    ev.pos.z - ev.preDir.z * arrowLen,
+  );
+  const outEnd = new THREE.Vector3(
+    ev.pos.x + ev.postDir.x * arrowLen,
+    ev.pos.y,
+    ev.pos.z + ev.postDir.z * arrowLen,
+  );
+
+  const fromDir = { x: -ev.preDir.x, y: 0, z: -ev.preDir.z };
+  const toDir = { x: ev.postDir.x, y: 0, z: ev.postDir.z };
+  const cosA = Math.max(-1, Math.min(1, vdot(fromDir, toDir)));
+  const angleRad = Math.acos(cosA);
+  const angleDeg = (angleRad * 180 / Math.PI).toFixed(1);
+  const steps = 20;
+  const arcPts: THREE.Vector3[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const sinA = Math.sin(angleRad);
+    if (sinA < 1e-6) {
+      arcPts.push(new THREE.Vector3(ev.pos.x + fromDir.x * arcR, ev.pos.y + 0.005, ev.pos.z + fromDir.z * arcR));
+    } else {
+      const s0 = Math.sin((1 - t) * angleRad) / sinA;
+      const s1 = Math.sin(t * angleRad) / sinA;
+      arcPts.push(
+        new THREE.Vector3(
+          ev.pos.x + (s0 * fromDir.x + s1 * toDir.x) * arcR,
+          ev.pos.y + 0.005,
+          ev.pos.z + (s0 * fromDir.z + s1 * toDir.z) * arcR,
+        ),
+      );
+    }
+  }
+
+  return (
+    <group>
+      <Line points={[inStart, inEnd]} color="#ff6b6b" lineWidth={1.5} transparent opacity={opacity} />
+      <Line points={[inEnd, outEnd]} color="#4fc3f7" lineWidth={1.5} transparent opacity={opacity} />
+      <Line points={arcPts} color="#ffd84d" lineWidth={1} transparent opacity={opacity} />
+      {age < 1.5 && (
+        <Html
+          position={[
+            ev.pos.x + (fromDir.x + toDir.x) * 0.035,
+            ev.pos.y + 0.03,
+            ev.pos.z + (fromDir.z + toDir.z) * 0.035,
+          ]}
+          style={{ pointerEvents: "none", opacity }}
+        >
+          <span style={{ color: "#ffd84d", fontSize: 10, fontFamily: "monospace", background: "rgba(0,0,0,0.6)", padding: "1px 4px", borderRadius: 3 }}>
+            ∠{angleDeg}°
+          </span>
+        </Html>
+      )}
+    </group>
+  );
+};
+
+const CushionBounces = () => {
+  const evs = useSim((s) => s.cushionBounces);
+  const visible = useSim((s) => s.showCushionAngles);
+  if (!visible) return null;
+  return (
+    <>
+      {evs.map((e) => (
+        <CushionBounceItem key={e.id} ev={e} />
       ))}
     </>
   );
@@ -1047,6 +1130,7 @@ export const Scene3D = () => {
       <Trail />
       <Predicted />
       <Collisions />
+      <CushionBounces />
       <Vectors />
       <AimingGuide />
       <CueStick />

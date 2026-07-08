@@ -62,6 +62,8 @@ export const Controls = () => {
   const set = useSim((s) => s.setControl);
   const toggles = useSim((s) => s.toggles);
   const setToggle = useSim((s) => s.setToggle);
+  const showCushionAngles = useSim((s) => s.showCushionAngles);
+  const setShowCushionAngles = useSim((s) => s.setShowCushionAngles);
   const running = useSim((s) => s.running);
   const setRunning = useSim((s) => s.setRunning);
   const reset = useSim((s) => s.reset);
@@ -206,6 +208,22 @@ export const Controls = () => {
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-primary">
+          Display
+        </h4>
+        <label className="flex items-center justify-between gap-2 rounded border border-border/40 bg-background/40 px-2 py-1.5">
+          <span className="flex items-center gap-2 text-xs">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#ffd84d" }} />
+            Cushion Bounce Angles
+          </span>
+          <Switch
+            checked={showCushionAngles}
+            onCheckedChange={(v) => setShowCushionAngles(v)}
+          />
+        </label>
       </div>
     </div>
   );

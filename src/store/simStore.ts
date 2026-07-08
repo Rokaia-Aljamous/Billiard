@@ -9,6 +9,9 @@ import {
   rotationalEnergy,
   v,
   vlen,
+  vnorm,
+  vscale,
+  vdot,
   angleBetween,
 } from "@/physics/types";
 import {
@@ -54,6 +57,14 @@ export interface PocketEvent {
   ballId: number;
   pocketId: PocketId;
   time: number;
+}
+
+export interface CushionBounceEvent {
+  id: number;
+  pos: Vec3;
+  preDir: Vec3;
+  postDir: Vec3;
+  bornAt: number;
 }
 
 export interface SamplePoint {
@@ -106,6 +117,9 @@ interface SimState {
   predicted: Vec3[];
   collisions: CollisionEvent[];
   pocketEvents: PocketEvent[];
+  cushionBounces: CushionBounceEvent[];
+  showCushionAngles: boolean;
+  setShowCushionAngles: (v: boolean) => void;
   cameraMode: CameraMode;
   showTrail: boolean;
   showPredicted: boolean;
@@ -321,6 +335,8 @@ export const useSim = create<SimState>((set, get) => ({
   predicted: [],
   collisions: [],
   pocketEvents: [],
+  cushionBounces: [],
+  showCushionAngles: true,
   cameraMode: "orbit",
   showTrail: true,
   showPredicted: true,
@@ -344,6 +360,7 @@ export const useSim = create<SimState>((set, get) => ({
       predicted: [],
       collisions: [],
       pocketEvents: [],
+      cushionBounces: [],
       forces: {},
       running: false,
       shotPhase: "idle",
@@ -364,6 +381,7 @@ export const useSim = create<SimState>((set, get) => ({
       predicted: [],
       collisions: [],
       pocketEvents: [],
+      cushionBounces: [],
       forces: {},
       running: false,
       shotPhase: "idle",
@@ -395,6 +413,7 @@ export const useSim = create<SimState>((set, get) => ({
   setShowTrail: (b) => set({ showTrail: b }),
   setShowPredicted: (b) => set({ showPredicted: b }),
   setShowLabels: (b) => set({ showLabels: b }),
+  setShowCushionAngles: (v) => set({ showCushionAngles: v }),
   setAimAngle: (rad) => set({ aimAngle: rad }),
   setCueElevation: (rad) =>
     set({ cueElevation: Math.max(0, Math.min(Math.PI / 2.2, rad)) }),
@@ -403,7 +422,7 @@ export const useSim = create<SimState>((set, get) => ({
   shoot: () => {
     const { shotPhase, running } = get();
     if (running || shotPhase !== "idle") return;
-    set({ shotPhase: "pullback" });
+    set({ shotPhase: "pullback", cushionBounces: [] });
   },
 
   commitShot: () => {
@@ -442,7 +461,7 @@ export const useSim = create<SimState>((set, get) => ({
   },
 
   step: (dt) => {
-    const { balls, world, time, samples, trail, collisions, pocketEvents, initialTotalEnergy } = get();
+    const { balls, world, time, samples, trail, collisions, pocketEvents, cushionBounces, initialTotalEnergy } = get();
     const forces: Record<number, BallForces> = {};
 
     const preStepVel = balls.map((b) => ({ ...b.vel }));
@@ -451,6 +470,7 @@ export const useSim = create<SimState>((set, get) => ({
       forces[b.id] = stepBall(b, world, dt);
     }
 
+    const newBounces: CushionBounceEvent[] = [];
     for (let i = 0; i < balls.length; i++) {
       const b = balls[i];
       if (b.pocketed) continue;
@@ -459,6 +479,14 @@ export const useSim = create<SimState>((set, get) => ({
       const vzFlip = Math.sign(pre.z) !== 0 && Math.sign(b.vel.z) !== Math.sign(pre.z);
       if ((vxFlip || vzFlip) && vlen(pre) > 0.05) {
         playCushionSound(vlen(pre));
+        const spd = vlen(pre);
+        newBounces.push({
+          id: Date.now() + Math.random(),
+          pos: { ...b.pos },
+          preDir: vscale(pre, 1 / spd),
+          postDir: vlen(b.vel) > 0.01 ? vscale(b.vel, 1 / vlen(b.vel)) : vscale(pre, 1 / spd),
+          bornAt: time + dt,
+        });
       }
     }
 
@@ -580,6 +608,7 @@ export const useSim = create<SimState>((set, get) => ({
 
     const keptColl = [...collisions, ...newColl].filter((c) => newTime - c.bornAt < 1.2);
     const allPocketEvents = [...pocketEvents, ...newPocketEvents];
+    const keptBounces = [...cushionBounces, ...newBounces].filter((e) => newTime - e.bornAt < 2);
 
     let maxSpeed = 0;
     for (const b of balls) {
@@ -598,6 +627,7 @@ export const useSim = create<SimState>((set, get) => ({
       predicted,
       collisions: keptColl,
       pocketEvents: allPocketEvents,
+      cushionBounces: keptBounces,
       systemStats: stats,
     };
     if (stateRunning && maxSpeed < 0.015 && stateShotPhase !== "pullback" && stateShotPhase !== "impact") {
