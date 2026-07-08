@@ -164,7 +164,7 @@ const mkBall = (id: number, color: string, c: ControlsState, pos: Vec3): Ball =>
 const BALL_COLORS: Record<number, string> = {
   1: "#f4c20d",
   2: "#1d4ed8",
-  3: "#dc2626",
+  3: "#880e0e",
   4: "#6d28d9",
   5: "#ea580c",
   6: "#15803d",
@@ -227,10 +227,6 @@ const build9BallRack = (c: ControlsState, apexZ: number): Ball[] => {
 };
 
 const buildSnookerRack = (c: ControlsState, apexZ: number): Ball[] => {
-  const r = c.radius;
-  const dx = 2 * r;
-  const dz = r * Math.sqrt(3);
-  const gap = 0.02;
   const balls: Ball[] = [];
   // Cue ball behind baulk line
   balls.push(mkBall(0, "#ffffff", c, v(0, 0, 0.8)));
@@ -240,26 +236,16 @@ const buildSnookerRack = (c: ControlsState, apexZ: number): Ball[] => {
   balls.push(mkBall(4, "#6d28d9", c, v(0, 0, 0.6)));      // brown — center baulk
   // Center spot
   balls.push(mkBall(5, "#1d4ed8", c, v(0, 0, 0)));        // blue
-  // Pyramid spot — pink at apex of the triangle
+  // Pyramid spot
   balls.push(mkBall(6, "#ea580c", c, v(0, 0, apexZ)));    // pink
-  // 15 red balls in a triangle, first row touching the pink
-  for (let row = 0; row < 5; row++) {
-    const count = row + 1;
-    const z = apexZ - 2 * r - row * dz;
-    const xStart = -((count - 1) / 2) * dx;
-    for (let i = 0; i < count; i++) {
-      balls.push(mkBall(1, "#dc2626", c, v(xStart + i * dx, 0, z)));
-    }
-  }
-  // Black behind the reds at a gap of one ball radius
-  const lastRowZ = apexZ - 2 * r - 4 * dz;
-  balls.push(mkBall(7, "#0a0a0a", c, v(0, 0, lastRowZ - 2 * r - gap)));
+  // Foot spot
+  balls.push(mkBall(7, "#0a0a0a", c, v(0, 0, -0.85)));    // black
   return balls;
 };
 
 const buildCaromSetup = (c: ControlsState): Ball[] => [
   mkBall(0, "#ffffff", c, v(0, 0, 0.5)),
-  mkBall(1, "#dc2626", c, v(-0.15, 0, -0.5)),
+  mkBall(1, "#880e0e", c, v(-0.15, 0, -0.5)),
   mkBall(2, "#f4c20d", c, v(0.15, 0, -0.5)),
 ];
 
@@ -399,6 +385,9 @@ export const useSim = create<SimState>((set, get) => ({
       const patch: Partial<SimState> = { controls, world };
       if (k === "impactAngle") {
         patch.aimAngle = ((val as number) * Math.PI) / 180;
+      }
+      if (k === "radius") {
+        patch.balls = s.balls.map((b) => ({ ...b, radius: val as number }));
       }
       return patch as SimState;
     }),

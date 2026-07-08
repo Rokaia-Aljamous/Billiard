@@ -435,6 +435,7 @@ const CueStick = () => {
   const cue = useSim((s) => s.balls[0]);
   const aim = useSim((s) => s.aimAngle);
   const elevation = useSim((s) => s.cueElevation);
+  const spinType = useSim((s) => s.controls.spinType);
   const phase = useSim((s) => s.shotPhase);
   const running = useSim((s) => s.running);
   const commit = useSim((s) => s.commitShot);
@@ -447,7 +448,6 @@ const CueStick = () => {
   const PULL_DUR = 0.55;
   const STRIKE_DUR = 0.07;
   const MAX_PULL = 0.22;
-  // smooth elevation
   const smoothElev = useRef(elevation);
 
   useFrame((_, dt) => {
@@ -473,20 +473,26 @@ const CueStick = () => {
     }
 
     if (!groupRef.current || !cue) return;
-    // smooth elevation toward target for nice motion
     const k = 1 - Math.exp(-dt * 14);
     smoothElev.current += (elevation - smoothElev.current) * k;
     const elev = smoothElev.current;
 
-    // Pivot at the contact point on the ball surface opposite the aim direction.
     const dx = Math.sin(aim);
     const dz = -Math.cos(aim);
     const r = cue.radius;
-    // contact point sits on the ball surface, slightly elevated up the back of the
-    // ball so the cue clears the cloth and "addresses" the ball above its center.
-    const contactX = cue.pos.x - dx * r * Math.cos(elev);
-    const contactY = cue.pos.y + r * Math.sin(elev);
-    const contactZ = cue.pos.z - dz * r * Math.cos(elev);
+    const halfR = r * 0.5;
+    let offRight = 0;
+    let offUp = 0;
+    switch (spinType) {
+      case "top":    offUp = halfR; break;
+      case "back":   offUp = -halfR; break;
+      case "side":   offRight = halfR; break;
+      case "masse":  offUp = -halfR; offRight = halfR * 0.6; break;
+      case "swerve": offRight = halfR * 0.3; break;
+    }
+    const contactX = cue.pos.x - dx * r * Math.cos(elev) + offRight * Math.cos(aim);
+    const contactY = cue.pos.y + r * Math.sin(elev) + offUp;
+    const contactZ = cue.pos.z - dz * r * Math.cos(elev) + offRight * Math.sin(aim);
 
     groupRef.current.position.set(contactX, contactY, contactZ);
     groupRef.current.rotation.set(0, -aim, 0);

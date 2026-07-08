@@ -243,7 +243,7 @@ export const applyCue = (
   const I = momentOfInertia(ball);
   ball.omega = vadd(ball.omega, vscale(angImpulse, 1 / I));
 
-  if (offsetUp < -0.005) {
+  if (offsetUp < -0.005 && cueElevationRad > 0.25) {
     ball.vel.y += (forceN * durationS * -offsetUp * 40) / ball.mass;
     ball.airborne = true;
   }
